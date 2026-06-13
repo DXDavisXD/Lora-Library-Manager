@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+
+# Python cache
+.pytest_cache/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Generated gallery (optional)
+gallery.html
+gallery.json
+
+# Local settings (optional)
+settings.json
