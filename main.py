@@ -88,6 +88,7 @@ def print_menu() -> None:
     verbose_status = "ON" if is_verbose() else "OFF"
     print(f"8. Toggle Dry Run Mode (Currently {dry_status})")
     print(f"9. Toggle Verbose Mode (Currently {verbose_status})")
+    print("10. Set CivitAI API Key")
     print()
 
 
@@ -349,8 +350,21 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
         new_val = not is_verbose()
         set_verbose(new_val)
         print(f"Verbose mode is now {'ENABLED' if new_val else 'DISABLED'}.")
+    elif choice == "10":
+        from config import get_civitai_api_key, set_civitai_api_key
+        current_key = get_civitai_api_key()
+        masked_key = f"{current_key[:4]}...{current_key[-4:]}" if len(current_key) > 8 else "Not Set"
+        print(f"Current API Key: {masked_key}")
+        new_key = input("Enter new CivitAI API Key (or type 'clear' to remove, press Enter to cancel): ").strip()
+        if new_key:
+            if new_key.lower() == "clear":
+                set_civitai_api_key("")
+                print("API Key cleared.")
+            else:
+                set_civitai_api_key(new_key)
+                print("API Key updated and saved.")
     else:
-        print("Please choose a number from 1 to 9.")
+        print("Please choose a number from 1 to 10.")
 
     return True
 

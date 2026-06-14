@@ -7,7 +7,6 @@ from pathlib import Path
 
 APP_NAME = "LoRA Library Manager"
 LORA_ROOT = Path(r"E:\SD\webui-forge\models\Lora")
-CIVITAI_API_KEY = "3864de0d20f5272d31b2456af719b590"
 LORA_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".bin"}
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
@@ -38,6 +37,7 @@ def save_settings(settings: dict) -> None:
 _settings = load_settings()
 DRY_RUN = _settings.get("dry_run", False)
 VERBOSE = _settings.get("verbose", False)
+CIVITAI_API_KEY = _settings.get("civitai_api_key", "")
 ENABLE_FILE_LOGGING = True
 
 
@@ -66,6 +66,15 @@ def set_verbose(value: bool) -> None:
     VERBOSE = value
     settings = load_settings()
     settings["verbose"] = value
+    save_settings(settings)
+
+
+# Update the CivitAI API Key and persist to settings.json.
+def set_civitai_api_key(value: str) -> None:
+    global CIVITAI_API_KEY
+    CIVITAI_API_KEY = value.strip()
+    settings = load_settings()
+    settings["civitai_api_key"] = CIVITAI_API_KEY
     save_settings(settings)
 
 
