@@ -1,0 +1,286 @@
+"""Lightweight HTTP server and API endpoints for LoRA Library Manager."""
+
+import http.server
+import socketserver
+import json
+import urllib.parse
+from datetime import datetime
+from pathlib import Path
+import os
+import sys
+
+from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, log_operation
+
+class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, lora_root: Path = None, **kwargs):
+        self.lora_root = lora_root or get_lora_root()
+        super().__init__(*args, **kwargs)
+
+    def translate_path(self, path):
+        # Serve files relative to lora_root instead of the current working directory
+        parsed_url = urllib.parse.urlparse(path)
+        path_str = urllib.parse.unquote(parsed_url.path)
+        
+        # Prevent directory traversal by sanitizing path components
+        cleaned_path = Path(path_str.lstrip("/"))
+        resolved_path = (self.lora_root / cleaned_path).resolve()
+        
+        # If the resolved path goes outside lora_root, fallback or deny access
+        if not resolved_path.is_relative_to(self.lora_root.resolve()):
+            return str(self.lora_root / "gallery.html")
+            
+        return str(resolved_path)
+
+    def do_GET(self):
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query = urllib.parse.parse_qs(parsed_url.query)
+
+        if path == "/api/user_data_summary":
+            self.handle_get_summary()
+        elif path == "/api/get_user_data":
+            relative_path = query.get("relative_path", [None])[0]
+            self.handle_get_user_data(relative_path)
+        else:
+            # Fall back to serving static files
+            super().do_GET()
+
+    def do_POST(self):
+        if self.path == "/api/save_user_data":
+            self.handle_save_user_data()
+        else:
+            self.send_error_response(404, "Not Found")
+
+    def handle_get_summary(self):
+        try:
+            summary = {}
+            # Scan for all user_data.json files recursively
+            for path in self.lora_root.rglob("user_data.json"):
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    # Find corresponding model file in parent directory
+                    model_file = None
+                    for ext in LORA_EXTENSIONS:
+                        for f_in_dir in path.parent.glob(f"*{ext}"):
+                            if is_lora_file(f_in_dir):
+                                model_file = f_in_dir
+                                break
+                        if model_file:
+                            break
+                    
+                    if model_file:
+                        relative_path = model_file.resolve().relative_to(self.lora_root.resolve()).as_posix()
+                        
+                        personal_triggers = data.get("personal_trigger_words", [])
+                        notes = data.get("notes", "")
+                        rating = data.get("rating", 0)
+                        collections = data.get("collections", [])
+                        
+                        # Only add to summary if there is actual content
+                        if personal_triggers or notes.strip() or rating > 0 or collections:
+                            summary[relative_path] = {
+                                "has_notes": bool(notes.strip()),
+                                "has_personal_triggers": bool(personal_triggers),
+                                "rating": rating,
+                                "collections": collections
+                            }
+                except Exception:
+                    continue
+                    
+            self.send_success_response(summary)
+        except Exception as e:
+            self.send_error_response(500, f"Error gathering user data summary: {e}")
+
+    def handle_get_user_data(self, relative_path):
+        if not relative_path:
+            self.send_error_response(400, "Missing relative_path parameter")
+            return
+
+        try:
+            target_model_file = (self.lora_root / relative_path).resolve()
+            if not target_model_file.is_relative_to(self.lora_root.resolve()):
+                self.send_error_response(403, "Access Denied: Path traversal detected")
+                return
+
+            user_data_path = target_model_file.parent / "user_data.json"
+            
+            if user_data_path.exists():
+                try:
+                    with user_data_path.open("r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    self.send_success_response(data)
+                except Exception as e:
+                    self.send_error_response(500, f"Error reading user data file: {e}")
+            else:
+                # Return empty defaults if file doesn't exist
+                self.send_success_response({
+                    "personal_trigger_words": [],
+                    "notes": "",
+                    "rating": 0,
+                    "collections": []
+                })
+        except Exception as e:
+            self.send_error_response(500, f"Server Error: {e}")
+
+    def handle_save_user_data(self):
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            data = json.loads(post_data.decode('utf-8'))
+            relative_path = data.get("relative_path")
+            user_payload = data.get("user_data", {})
+            
+            if not relative_path:
+                self.send_error_response(400, "Missing relative_path")
+                return
+            
+            target_model_file = (self.lora_root / relative_path).resolve()
+            if not target_model_file.is_relative_to(self.lora_root.resolve()):
+                self.send_error_response(403, "Access Denied: Path traversal detected")
+                return
+
+            if not target_model_file.exists():
+                self.send_error_response(404, "Model file not found")
+                return
+                
+            target_folder = target_model_file.parent
+            user_data_path = target_folder / "user_data.json"
+            
+            # Determine if we have actual content to save
+            personal_triggers = user_payload.get("personal_trigger_words", [])
+            notes = user_payload.get("notes", "")
+            rating = user_payload.get("rating", 0)
+            collections = user_payload.get("collections", [])
+            
+            has_content = bool(personal_triggers or notes.strip() or rating > 0 or collections)
+            
+            if not has_content:
+                # If there's no content to save, and the file exists, we delete it lazily
+                if user_data_path.exists():
+                    try:
+                        user_data_path.unlink()
+                        log_operation(f"Deleted empty user data sidecar: {user_data_path}")
+                    except OSError as e:
+                        log_operation(f"Error deleting user data sidecar {user_data_path}: {e}")
+                
+                self.send_success_response({
+                    "status": "success", 
+                    "message": "User data cleared",
+                    "user_data": {
+                        "personal_trigger_words": [],
+                        "notes": "",
+                        "rating": 0,
+                        "collections": []
+                    }
+                })
+                return
+
+            # Load existing file to preserve any other keys (future compatibility)
+            existing_data = {}
+            if user_data_path.exists():
+                try:
+                    with user_data_path.open("r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                except Exception:
+                    pass
+
+            # Merge and set metadata fields
+            existing_data["schema_version"] = 1
+            existing_data["last_modified"] = datetime.now().isoformat() + "Z"
+            existing_data["personal_trigger_words"] = personal_triggers
+            existing_data["notes"] = notes
+            existing_data["rating"] = rating
+            existing_data["collections"] = collections
+
+            # Save the file
+            target_folder.mkdir(parents=True, exist_ok=True)
+            with user_data_path.open("w", encoding="utf-8") as f:
+                json.dump(existing_data, f, indent=2)
+                
+            log_operation(f"Saved user data sidecar: {user_data_path}")
+            self.send_success_response({
+                "status": "success",
+                "message": "User data saved successfully",
+                "user_data": existing_data
+            })
+            
+        except json.JSONDecodeError:
+            self.send_error_response(400, "Invalid JSON payload")
+        except Exception as e:
+            self.send_error_response(500, f"Server Error: {e}")
+
+    def send_success_response(self, response_data):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps(response_data).encode('utf-8'))
+
+    def send_error_response(self, code, message):
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps({"status": "error", "message": message}).encode('utf-8'))
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.end_headers()
+
+def make_handler(lora_root: Path):
+    class CustomHandler(GalleryHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, lora_root=lora_root, directory=str(lora_root), **kwargs)
+    return CustomHandler
+
+def start_server(lora_root: Path, port: int = 8000) -> None:
+    handler = make_handler(lora_root)
+    server = None
+    actual_port = port
+    
+    # Try finding an open port starting from 8000
+    for p in range(port, port + 20):
+        try:
+            # Bind to localhost specifically
+            server = socketserver.TCPServer(("127.0.0.1", p), handler)
+            actual_port = p
+            break
+        except OSError:
+            continue
+            
+    if not server:
+        print("Error: Could not find any open ports to start the server.")
+        return
+        
+    # Automatically refresh gallery HTML once on startup to reflect latest code/template changes
+    try:
+        from main import refresh_gallery
+        print("Regenerating gallery HTML to apply template updates...")
+        refresh_gallery(lora_root)
+    except Exception as e:
+        print(f"Warning: Could not regenerate gallery HTML on startup: {e}")
+        
+    url = f"http://127.0.0.1:{actual_port}/gallery.html"
+    print(f"\n==============================================")
+    print(f"LoRA Library Server started successfully!")
+    print(f"Serving LoRA Root: {lora_root}")
+    print(f"Gallery URL: {url}")
+    print(f"==============================================")
+    print("Opening browser...")
+    import webbrowser
+    webbrowser.open(url)
+    print("Press Ctrl+C to shut down the server and exit.")
+    
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down server...")
+    finally:
+        server.server_close()
+        print("Server stopped.")

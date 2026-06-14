@@ -2,6 +2,7 @@
 
 import html
 import json
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -314,6 +315,17 @@ def escape_text(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
+# Strip HTML tags and unescape HTML entities.
+def clean_html_text(text: str) -> str:
+    if not text:
+        return ""
+    # Strip HTML tags
+    clean = re.sub(r'<[^>]*>', ' ', text)
+    # Replace multiple spaces/newlines with a single space
+    clean = re.sub(r'\s+', ' ', clean)
+    return html.unescape(clean.strip())
+
+
 # Build one HTML card for a gallery entry.
 def build_gallery_card(entry: dict, output_path: Path) -> str:
     preview_image = relative_asset_path(entry.get("preview_image", ""), output_path)
@@ -328,12 +340,15 @@ def build_gallery_card(entry: dict, output_path: Path) -> str:
         " ".join(entry.get("tags", []))
     ]).casefold()
     
+    desc_raw = entry.get("description", "") or ""
+    desc_clean = clean_html_text(desc_raw)
+    
     search_text = " ".join(
         [
             entry.get("name", ""),
             entry.get("folder_name", ""),
             trigger_text,
-            entry.get("description", ""),
+            desc_clean,
             hidden_search_text,
         ]
     ).casefold()
@@ -423,12 +438,24 @@ def build_gallery_card(entry: dict, output_path: Path) -> str:
                  data-hash="{escape_text(sha256)}"
                  data-path="{escape_text(relative_path)}"
                  data-triggers="{escape_text(trigger_text)}"
+                 data-creator="{escape_text(entry.get('creator', ''))}"
+                 data-base-model="{escape_text(entry.get('base_model', ''))}"
+                 data-description="{escape_text(desc_clean)}"
+                 data-tags="{escape_text(json.dumps(entry.get('tags', [])))}"
+                 data-official-triggers="{escape_text(json.dumps(trigger_words))}"
                  data-favorite="false">
             <div class="preview">
                 {image_html}
                 <button class="btn-favorite" aria-label="Toggle favorite" type="button">
                     <svg class="star-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                </button>
+                <button class="btn-details" aria-label="View Details" type="button" tabindex="0">
+                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
                     </svg>
                 </button>
                 <div class="preview-feedback">Triggers Copied!</div>
@@ -441,7 +468,7 @@ def build_gallery_card(entry: dict, output_path: Path) -> str:
                 {trigger_section_html}
                 
                 <p class="label">Description</p>
-                <p class="description">{escape_text(entry.get("description", "") or "No description available.")}</p>
+                <p class="description">{escape_text(desc_clean or "No description available.")}</p>
                 
                 <div class="card-footer">
                     <button class="btn-copy" aria-label="Copy LoRA tag" type="button" tabindex="0">
@@ -530,7 +557,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             background: rgba(9, 10, 15, 0.85);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
-            border-bottom: 1px solid var(--border);
             padding: 16px 32px;
         }}
 
@@ -538,39 +564,47 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             max-width: 1400px;
             margin: 0 auto;
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            background: rgba(17, 19, 28, 0.45);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 8px 16px;
+            gap: 16px;
+            width: 100%;
+        }}
+
+        .header-left, .header-right {{
+            display: flex;
+            align-items: center;
             gap: 16px;
         }}
 
-        @media (min-width: 768px) {{
-            .header-container {{
-                flex-direction: row;
-                justify-content: space-between;
-                align-items: center;
-            }}
+        .header-right {{
+            flex-grow: 1;
+        }}
+
+        .divider {{
+            width: 1px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.08);
+            flex-shrink: 0;
         }}
 
         h1 {{
             margin: 0;
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 800;
             background: linear-gradient(135deg, #a5b4fc, #6366f1);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             letter-spacing: -0.025em;
-        }}
-
-        .toolbar {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            align-items: center;
+            white-space: nowrap;
         }}
 
         .search-wrapper {{
             position: relative;
-            flex: 1 1 300px;
-            max-width: 450px;
+            flex: 1;
+            max-width: 100%;
         }}
 
         .search-icon {{
@@ -586,11 +620,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         #search {{
             width: 100%;
-            background: #181b24;
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
             border-radius: 8px;
             color: var(--text);
-            padding: 10px 14px 10px 42px;
+            padding: 8px 14px 8px 42px;
+            height: 38px;
             font-size: 14px;
             outline: none;
             transition: var(--transition);
@@ -603,11 +638,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         .btn-toggle-fav {{
-            background: #181b24;
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
             color: var(--text);
             border-radius: 8px;
-            padding: 10px 16px;
+            padding: 6px 14px;
+            height: 38px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 600;
@@ -616,6 +652,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             gap: 8px;
             transition: var(--transition);
             outline: none;
+            white-space: nowrap;
         }}
 
         .btn-toggle-fav:hover, .btn-toggle-fav:focus {{
@@ -645,7 +682,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         .weight-control {{
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
         }}
 
         .weight-label {{
@@ -653,28 +690,36 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             font-weight: 700;
             color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
         }}
 
         .weight-selector {{
             display: flex;
-            background: #181b24;
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 2px;
+            height: 38px;
+            align-items: center;
         }}
 
         .btn-weight {{
             background: transparent;
             border: none;
             color: var(--text-muted);
-            padding: 6px 12px;
+            padding: 0 12px;
+            height: 32px;
+            line-height: 32px;
             font-size: 13px;
             font-weight: 600;
             border-radius: 6px;
             cursor: pointer;
             transition: var(--transition);
             outline: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }}
 
         .btn-weight:hover, .btn-weight:focus {{
@@ -689,25 +734,28 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .select-wrapper {{
             position: relative;
-            width: 180px;
+            width: 110px;
         }}
 
-        #sort {{
+        #sort, #filter-collection {{
             width: 100%;
-            background: #181b24;
+            background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
             border-radius: 8px;
             color: var(--text);
-            padding: 10px 32px 10px 14px;
+            padding: 8px 28px 8px 14px;
+            height: 38px;
             font-size: 14px;
             outline: none;
             appearance: none;
             -webkit-appearance: none;
             cursor: pointer;
             transition: var(--transition);
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }}
 
-        #sort:focus {{
+        #sort:focus, #filter-collection:focus {{
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
             background: #1c202b;
@@ -752,6 +800,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-direction: column;
             box-shadow: var(--shadow);
             transition: var(--transition);
+        }}
+
+        .card[hidden] {{
+            display: none !important;
         }}
 
         .card:hover {{
@@ -1022,6 +1074,20 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-direction: column;
             gap: 8px;
             margin-bottom: 12px;
+            max-height: 160px;
+            overflow-y: auto;
+            padding-right: 4px;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }}
+
+        .trigger-groups-container::-webkit-scrollbar {{
+            width: 4px;
+        }}
+
+        .trigger-groups-container::-webkit-scrollbar-thumb {{
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
         }}
 
         .trigger-group {{
@@ -1030,6 +1096,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-radius: 8px;
             overflow: hidden;
             transition: var(--transition);
+            flex-shrink: 0;
         }}
 
         .trigger-group:hover {{
@@ -1351,7 +1418,49 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-color: rgba(255, 255, 255, 0.2);
         }}
 
-        @media (max-width: 640px) {{
+        @media (max-width: 1024px) {{
+            .header-container {{
+                flex-direction: column;
+                align-items: stretch;
+                gap: 16px;
+                padding: 16px;
+                width: 100%;
+            }}
+
+            .header-left, .header-right {{
+                width: 100%;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 12px;
+            }}
+
+            .header-left .divider, .header-right .divider {{
+                display: none;
+            }}
+
+            .search-wrapper {{
+                max-width: 100%;
+                width: 100%;
+                order: 1;
+            }}
+
+            .select-wrapper {{
+                flex: 1;
+                width: auto;
+                order: 2;
+            }}
+
+            #sort, #filter-collection {{
+                width: 100%;
+            }}
+
+            .count {{
+                order: 3;
+                text-align: center;
+            }}
+        }}
+
+        @media (max-width: 768px) {{
             header {{
                 padding: 16px;
             }}
@@ -1360,17 +1469,25 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 padding: 16px;
             }}
 
-            .toolbar {{
+            .header-left, .header-right {{
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }}
+
+            .weight-control {{
+                justify-content: space-between;
                 width: 100%;
             }}
 
-            .search-wrapper {{
-                flex: 1 1 100%;
-                max-width: 100%;
+            .weight-selector {{
+                flex-grow: 1;
+                justify-content: space-around;
             }}
 
-            .select-wrapper {{
+            .btn-toggle-fav {{
                 width: 100%;
+                justify-content: center;
             }}
 
             .prompt-builder {{
@@ -1378,28 +1495,574 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 border-radius: 0;
             }}
         }}
+
+        .btn-details {{
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(15, 16, 22, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+            outline: none;
+            z-index: 5;
+        }}
+
+        .btn-details:hover, .btn-details:focus {{
+            background: var(--accent);
+            color: #ffffff;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }}
+
+        .btn-details svg {{
+            width: 18px;
+            height: 18px;
+        }}
+
+        .card-indicators {{
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            display: flex;
+            gap: 4px;
+            pointer-events: none;
+            z-index: 5;
+        }}
+
+        .indicator-badge {{
+            background: rgba(15, 16, 22, 0.75);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            font-weight: 600;
+        }}
+
+        /* Modal Overlay */
+        .modal-overlay {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(9, 10, 15, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }}
+
+        .modal-overlay.active {{
+            opacity: 1;
+            pointer-events: auto;
+        }}
+
+        /* Modal Container */
+        .modal-container {{
+            background: var(--panel);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 960px;
+            height: 85vh;
+            max-height: 85vh;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+            overflow: hidden;
+            position: relative;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            flex-direction: column;
+        }}
+
+        .modal-overlay.active .modal-container {{
+            transform: scale(1);
+        }}
+
+        /* Close Button */
+        .modal-close {{
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            font-size: 24px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: var(--transition);
+            outline: none;
+        }}
+
+        .modal-close:hover, .modal-close:focus {{
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }}
+
+        /* Modal Body Layout */
+        .modal-body {{
+            display: flex;
+            flex-direction: row;
+            height: 100%;
+            overflow: hidden;
+        }}
+
+        /* Left side (Static details, preview) */
+        .modal-left {{
+            width: 40%;
+            padding: 24px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            background: rgba(0, 0, 0, 0.15);
+            overflow-y: auto;
+        }}
+
+        .modal-preview-container {{
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #171923;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-height: 480px;
+        }}
+
+        .modal-preview-container img {{
+            max-width: 100%;
+            max-height: 480px;
+            height: auto;
+            width: auto;
+            display: block;
+            object-fit: contain;
+        }}
+
+        .modal-meta-rows {{
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 13px;
+        }}
+
+        .meta-row {{
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }}
+
+        .meta-row strong {{
+            color: var(--text-muted);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        .meta-row span {{
+            color: var(--text);
+            word-break: break-all;
+        }}
+
+        /* Right side (Dynamic/Editable details) */
+        .modal-right {{
+            width: 60%;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }}
+
+        .modal-right h2 {{
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.3;
+        }}
+
+        .modal-section {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }}
+
+        .modal-section h3 {{
+            margin: 0;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        /* Description Box */
+        .modal-description-text {{
+            font-size: 13px;
+            color: var(--text-muted);
+            max-height: 120px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            line-height: 1.6;
+        }}
+
+        /* Tags Container */
+        .modal-tags-container {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }}
+
+        .modal-tag {{
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }}
+
+        /* Notes Textarea */
+        .modal-section textarea {{
+            width: 100%;
+            min-height: 80px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 10px 12px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            outline: none;
+            transition: var(--transition);
+        }}
+
+        .modal-section textarea:focus {{
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.05);
+        }}
+
+        /* Star Rating */
+        .rating-stars {{
+            display: flex;
+            gap: 8px;
+            font-size: 28px;
+            cursor: pointer;
+            user-select: none;
+            color: var(--text-muted);
+            width: fit-content;
+        }}
+
+        .rating-stars span {{
+            transition: transform 0.15s ease, color 0.15s ease;
+        }}
+
+        .rating-stars span:hover {{
+            transform: scale(1.2);
+        }}
+
+        .rating-stars span.active {{
+            color: #fbbf24;
+        }}
+
+        /* Collection Badges */
+        .collections-list {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }}
+
+        .collection-badge {{
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            transition: var(--transition);
+        }}
+
+        .collection-badge:hover {{
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            cursor: pointer;
+        }}
+
+        .collection-badge::after {{
+            content: "×";
+            font-weight: bold;
+            font-size: 14px;
+        }}
+
+        /* Input forms */
+        .add-collection-form, .add-trigger-form {{
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }}
+
+        .add-collection-form input, .add-trigger-form input {{
+            flex: 1;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            padding: 6px 10px;
+            font-size: 13px;
+            outline: none;
+        }}
+
+        .add-collection-form input:focus, .add-trigger-form input:focus {{
+            border-color: var(--accent);
+        }}
+
+        .btn-mini {{
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 0 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }}
+
+        .btn-mini:hover {{
+            background: var(--accent-hover);
+        }}
+
+        /* Trigger word list layouts */
+        .triggers-list-read {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 120px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            width: 100%;
+        }}
+
+        .trigger-tag-read {{
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }}
+
+        .triggers-list-edit {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            max-height: 120px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            width: 100%;
+        }}
+
+        .trigger-tag-edit {{
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }}
+
+        .trigger-tag-edit:hover {{
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }}
+
+        .trigger-tag-edit::after {{
+            content: "×";
+            font-weight: bold;
+        }}
+
+        .grid-2-col {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }}
+
+        /* Save / Copy Action Bars */
+        .modal-actions-bar {{
+            display: flex;
+            gap: 8px;
+        }}
+
+        .modal-actions-bar button {{
+            flex: 1;
+        }}
+
+        .modal-save-bar {{
+            display: flex;
+            gap: 12px;
+            border-top: 1px solid var(--border);
+            padding-top: 16px;
+            margin-top: auto;
+        }}
+
+        .btn-save {{
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            flex: 1;
+            transition: var(--transition);
+        }}
+
+        .btn-save:hover {{
+            background: #059669;
+        }}
+
+        .modal-save-bar .btn-secondary {{
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            flex: 1;
+            transition: var(--transition);
+        }}
+
+        .modal-save-bar .btn-secondary:hover {{
+            background: rgba(255, 255, 255, 0.08);
+        }}
+
+        /* Action button overrides inside modal */
+        .btn-action-primary {{
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }}
+
+        .btn-action-primary:hover {{
+            background: var(--accent-hover);
+        }}
+
+        .btn-action-secondary {{
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+        }}
+
+        .btn-action-secondary:hover {{
+            border-color: var(--accent);
+            background: var(--accent-alpha);
+        }}
+
+        @media (max-width: 768px) {{
+            .modal-body {{
+                flex-direction: column;
+                overflow-y: auto;
+            }}
+            .modal-left {{
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }}
+            .modal-right {{
+                width: 100%;
+            }}
+            .modal-container {{
+                max-height: 90vh;
+                height: 90vh;
+            }}
+        }}
+
+        @media (max-width: 600px) {{
+            .grid-2-col {{
+                grid-template-columns: 1fr;
+            }}
+        }}
     </style>
 </head>
 <body>
     <header>
         <div class="header-container">
-            <h1>LoRA Library</h1>
-            <div class="toolbar">
-                <div class="search-wrapper">
-                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input id="search" type="search" placeholder="Search models, folder, triggers, metadata..." autocomplete="off">
-                </div>
-
+            <div class="header-left">
+                <h1>LoRA Library</h1>
+                <div class="divider"></div>
                 <button id="toggle-fav" class="btn-toggle-fav" aria-label="Show favorites only" type="button">
                     <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
-                    <span>Show Favorites Only</span>
+                    <span>Favorites</span>
                 </button>
-
+                <div class="divider"></div>
                 <div class="weight-control">
                     <span class="weight-label">Weight</span>
                     <div class="weight-selector">
@@ -1409,18 +2072,37 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         <button type="button" class="btn-weight" data-weight="1.2">1.2</button>
                     </div>
                 </div>
+            </div>
 
-                <div class="select-wrapper">
-                    <select id="sort" aria-label="Sort models">
-                        <option value="name-asc">Alphabetical A-Z</option>
-                        <option value="name-desc">Alphabetical Z-A</option>
-                        <option value="favorites-first">Favorites First</option>
-                        <option value="mtime-desc">Recently Added</option>
+            <div class="header-right">
+                <div class="divider"></div>
+                <div class="search-wrapper">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input id="search" type="search" placeholder="Search..." autocomplete="off">
+                </div>
+                <div class="select-wrapper" style="width: 150px;">
+                    <select id="filter-collection" aria-label="Filter by collection">
+                        <option value="">All Collections</option>
                     </select>
                     <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"/>
                     </svg>
                 </div>
+                <div class="select-wrapper">
+                    <select id="sort" aria-label="Sort models">
+                        <option value="name-asc">A-Z</option>
+                        <option value="name-desc">Z-A</option>
+                        <option value="favorites-first">Favs First</option>
+                        <option value="mtime-desc">Recent</option>
+                    </select>
+                    <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </div>
+                <div class="divider"></div>
                 <span id="count" class="count"></span>
             </div>
         </div>
@@ -1432,7 +2114,98 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         <p id="empty" class="empty">No matching LoRAs found.</p>
     </main>
 
-    <!-- Prompt Builder -->
+    <!-- Details Modal -->
+    <div id="details-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
+        <div class="modal-container">
+            <button class="modal-close" aria-label="Close modal">&times;</button>
+            <div class="modal-body">
+                <!-- Left Side: Preview & Details -->
+                <div class="modal-left">
+                    <div class="modal-preview-container">
+                        <img id="modal-image" src="" alt="LoRA Preview">
+                    </div>
+                    <div class="modal-meta-rows">
+                        <div class="meta-row"><strong>Creator</strong><span id="modal-creator"></span></div>
+                        <div class="meta-row"><strong>Base Model</strong><span id="modal-base-model"></span></div>
+                        <div class="meta-row"><strong>Filename</strong><span id="modal-filename"></span></div>
+                        <div class="meta-row"><strong>Path</strong><span id="modal-path"></span></div>
+                    </div>
+                    <div class="modal-actions-bar">
+                        <button id="modal-btn-copy-tag" class="btn-action-primary">Copy Tag</button>
+                        <button id="modal-btn-add-prompt" class="btn-action-secondary">Add to Prompt</button>
+                    </div>
+                </div>
+                <!-- Right Side: Edit Panel -->
+                <div class="modal-right">
+                    <h2 id="modal-title">Model Name</h2>
+                    
+                    <div class="modal-section">
+                        <h3>Description</h3>
+                        <div id="modal-description" class="modal-description-text"></div>
+                    </div>
+
+                    <div class="modal-section">
+                        <h3>Tags</h3>
+                        <div id="modal-tags" class="modal-tags-container"></div>
+                    </div>
+                    
+                    <!-- Rating System -->
+                    <div class="modal-section">
+                        <h3>Personal Rating</h3>
+                        <div class="rating-stars" id="modal-rating">
+                            <span data-val="1">&#9734;</span>
+                            <span data-val="2">&#9734;</span>
+                            <span data-val="3">&#9734;</span>
+                            <span data-val="4">&#9734;</span>
+                            <span data-val="5">&#9734;</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Collections -->
+                    <div class="modal-section">
+                        <h3>Collections</h3>
+                        <div class="collections-container">
+                            <div id="modal-collections-list" class="collections-list"></div>
+                            <div class="add-collection-form">
+                                <input type="text" id="input-new-collection" placeholder="New collection...">
+                                <button id="btn-add-collection" class="btn-mini">Add</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Notes -->
+                    <div class="modal-section">
+                        <h3>Notes</h3>
+                        <textarea id="modal-notes" placeholder="Looks best around 0.8 weight. Add notes..."></textarea>
+                    </div>
+                    
+                    <!-- Triggers -->
+                    <div class="modal-section grid-2-col">
+                        <div>
+                            <h3>Official Triggers</h3>
+                            <div id="modal-official-triggers" class="triggers-list-read"></div>
+                        </div>
+                        <div>
+                            <h3>Personal Triggers</h3>
+                            <div id="modal-personal-triggers-container">
+                                <div id="modal-personal-triggers" class="triggers-list-edit"></div>
+                                <div class="add-trigger-form">
+                                    <input type="text" id="input-new-trigger" placeholder="New trigger...">
+                                    <button id="btn-add-trigger" class="btn-mini">Add</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Controls -->
+                    <div class="modal-save-bar">
+                        <button id="modal-btn-save" class="btn-save">Save Changes</button>
+                        <button id="modal-btn-copy-all-triggers" class="btn-secondary">Copy All Triggers</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <div id="prompt-builder" class="prompt-builder collapsed">
         <div class="prompt-builder-header" role="button" aria-expanded="false" tabindex="0" aria-label="Toggle Prompt Builder">
             <div class="prompt-builder-title-container">
@@ -1516,13 +2289,25 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         function updateFilter() {{
             const query = searchInput.value.trim().toLowerCase();
             const showFavsOnly = toggleFavBtn.classList.contains("active");
+            const filterCollSelect = document.getElementById("filter-collection");
+            const selectedCollection = filterCollSelect ? filterCollSelect.value : "";
             let visible = 0;
 
             for (const card of cards) {{
                 const matchesSearch = card.dataset.search.includes(query);
                 const matchesFav = !showFavsOnly || card.dataset.favorite === "true";
-                const matches = matchesSearch && matchesFav;
                 
+                let matchesCollection = true;
+                if (selectedCollection) {{
+                    try {{
+                        const collections = JSON.parse(card.dataset.collections || "[]");
+                        matchesCollection = collections.includes(selectedCollection);
+                    }} catch (e) {{
+                        matchesCollection = false;
+                    }}
+                }}
+                
+                const matches = matchesSearch && matchesFav && matchesCollection;
                 card.hidden = !matches;
 
                 if (matches) {{
@@ -1530,7 +2315,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }}
             }}
 
-            count.textContent = `\${{visible}} / \${{cards.length}}`;
+            count.textContent = `${{visible}} / ${{cards.length}}`;
             empty.style.display = visible === 0 ? "block" : "none";
         }}
 
@@ -1567,7 +2352,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             if (!card) return;
             
             const stem = card.dataset.stem;
-            const tag = `<lora:\${{stem}}:\${{currentWeight}}>`;
+            const tag = `<lora:${{stem}}:${{currentWeight}}>`;
             
             navigator.clipboard.writeText(tag).then(() => {{
                 const normalIcon = btn.querySelector(".copy-normal");
@@ -1722,8 +2507,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     const tokenSpan = document.createElement("span");
                     tokenSpan.className = "prompt-token";
                     tokenSpan.innerHTML = `
-                        <span>\${{escapeHTML(token)}}</span>
-                        <button class="btn-remove-token" type="button" aria-label="Remove \${{escapeHTML(token)}}" data-token="\${{escapeHTML(token)}}">×</button>
+                        <span>${{escapeHTML(token)}}</span>
+                        <button class="btn-remove-token" type="button" aria-label="Remove ${{escapeHTML(token)}}" data-token="${{escapeHTML(token)}}">×</button>
                     `;
                     container.appendChild(tokenSpan);
                 }});
@@ -1731,10 +2516,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         function addToken(stem) {{
-            const newToken = `<lora:\${{stem}}:\${{currentWeight}}>`;
+            const newToken = `<lora:${{stem}}:${{currentWeight}}>`;
             let tokens = getPromptTokens();
             // Filter out any existing token for this specific model stem to prevent duplicate tags
-            tokens = tokens.filter(t => !t.startsWith(`<lora:\${{stem}}:`));
+            tokens = tokens.filter(t => !t.startsWith(`<lora:${{stem}}:`));
             tokens.push(newToken);
             savePromptTokens(tokens);
             updatePromptBuilderUI();
@@ -1862,22 +2647,463 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 searchInput.select();
             }}
             if (event.key === "Escape") {{
+                const modal = document.getElementById("details-modal");
+                if (modal && modal.classList.contains("active")) {{
+                    closeDetailsModal();
+                    event.stopPropagation();
+                    return;
+                }}
                 searchInput.value = "";
                 updateFilter();
                 searchInput.blur();
             }}
         }});
 
+        // Details Modal state & handlers
+        let currentModalCard = null;
+        let currentPersonalTriggers = [];
+        let currentCollections = [];
+        let currentRating = 0;
+
+        // Open details modal
+        function openDetailsModal(card, userData) {{
+            currentModalCard = card;
+            
+            // Extract static details
+            const name = card.dataset.name;
+            const filename = card.dataset.filename;
+            const stem = card.dataset.stem;
+            const path = card.dataset.path;
+            const creator = card.dataset.creator || "Unknown";
+            const baseModel = card.dataset.baseModel || "Unknown";
+            const description = card.dataset.description || "No description available.";
+            const tags = JSON.parse(card.dataset.tags || "[]");
+            const officialTriggers = JSON.parse(card.dataset.officialTriggers || "[]");
+
+            // Extract user data
+            currentPersonalTriggers = userData.personal_trigger_words || [];
+            currentCollections = userData.collections || [];
+            currentRating = userData.rating || 0;
+            const notes = userData.notes || "";
+
+            // Populate fields
+            document.getElementById("modal-title").textContent = name;
+            document.getElementById("modal-creator").textContent = creator;
+            document.getElementById("modal-base-model").textContent = baseModel;
+            document.getElementById("modal-filename").textContent = filename;
+            document.getElementById("modal-path").textContent = path;
+            document.getElementById("modal-description").innerHTML = description;
+            document.getElementById("modal-notes").value = notes;
+
+            // Image preview
+            const imgEl = document.getElementById("modal-image");
+            const cardImg = card.querySelector(".preview img");
+            if (cardImg) {{
+                imgEl.style.display = "block";
+                imgEl.src = cardImg.src;
+            }} else {{
+                imgEl.style.display = "none";
+            }}
+
+            // Tags
+            const tagsContainer = document.getElementById("modal-tags");
+            tagsContainer.innerHTML = "";
+            tags.forEach(tag => {{
+                const span = document.createElement("span");
+                span.className = "modal-tag";
+                span.textContent = tag;
+                tagsContainer.appendChild(span);
+            }});
+
+            // Official Triggers
+            const offTrigContainer = document.getElementById("modal-official-triggers");
+            offTrigContainer.innerHTML = "";
+            if (officialTriggers.length === 0) {{
+                offTrigContainer.innerHTML = '<span class="text-muted" style="font-size:12px; padding: 4px;">None</span>';
+            }} else {{
+                officialTriggers.forEach(trig => {{
+                    const span = document.createElement("span");
+                    span.className = "trigger-tag-read";
+                    span.textContent = trig;
+                    offTrigContainer.appendChild(span);
+                }});
+            }}
+
+            // Render interactive lists
+            renderPersonalTriggers();
+            renderCollections();
+            renderRating(currentRating);
+
+            // Re-bind Action buttons
+            const copyTagBtn = document.getElementById("modal-btn-copy-tag");
+            const addPromptBtn = document.getElementById("modal-btn-add-prompt");
+
+            const newCopyBtn = copyTagBtn.cloneNode(true);
+            const newAddBtn = addPromptBtn.cloneNode(true);
+            copyTagBtn.parentNode.replaceChild(newCopyBtn, copyTagBtn);
+            addPromptBtn.parentNode.replaceChild(newAddBtn, addPromptBtn);
+
+            newCopyBtn.addEventListener("click", () => {{
+                const tag = `<lora:${{stem}}:${{currentWeight}}>`;
+                navigator.clipboard.writeText(tag).then(() => {{
+                    newCopyBtn.textContent = "Copied!";
+                    setTimeout(() => newCopyBtn.textContent = "Copy Tag", 1500);
+                }});
+            }});
+
+            newAddBtn.addEventListener("click", () => {{
+                addToken(stem);
+                newAddBtn.textContent = "Added!";
+                setTimeout(() => newAddBtn.textContent = "Add to Prompt", 1500);
+            }});
+
+            // Show Modal
+            const modal = document.getElementById("details-modal");
+            modal.classList.add("active");
+            modal.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
+        }}
+
+        function closeDetailsModal() {{
+            const modal = document.getElementById("details-modal");
+            modal.classList.remove("active");
+            modal.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
+            currentModalCard = null;
+        }}
+
+        // Render functions
+        function renderRating(rating) {{
+            const stars = document.querySelectorAll("#modal-rating span");
+            stars.forEach(star => {{
+                const val = parseInt(star.dataset.val);
+                if (val <= rating) {{
+                    star.classList.add("active");
+                    star.innerHTML = "&#9733;";
+                }} else {{
+                    star.classList.remove("active");
+                    star.innerHTML = "&#9734;";
+                }}
+            }});
+        }}
+
+        function renderPersonalTriggers() {{
+            const container = document.getElementById("modal-personal-triggers");
+            container.innerHTML = "";
+            if (currentPersonalTriggers.length === 0) {{
+                container.innerHTML = '<span class="text-muted" style="font-size:12px; padding: 4px;">No personal triggers.</span>';
+            }} else {{
+                currentPersonalTriggers.forEach((trig, idx) => {{
+                    const span = document.createElement("span");
+                    span.className = "trigger-tag-edit";
+                    span.textContent = trig;
+                    span.addEventListener("click", () => {{
+                        currentPersonalTriggers.splice(idx, 1);
+                        renderPersonalTriggers();
+                    }});
+                    container.appendChild(span);
+                }});
+            }}
+        }}
+
+        function renderCollections() {{
+            const container = document.getElementById("modal-collections-list");
+            container.innerHTML = "";
+            if (currentCollections.length === 0) {{
+                container.innerHTML = '<span class="text-muted" style="font-size:12px; padding: 4px;">Not in any collections.</span>';
+            }} else {{
+                currentCollections.forEach((coll, idx) => {{
+                    const span = document.createElement("span");
+                    span.className = "collection-badge";
+                    span.textContent = coll;
+                    span.addEventListener("click", () => {{
+                        currentCollections.splice(idx, 1);
+                        renderCollections();
+                    }});
+                    container.appendChild(span);
+                }});
+            }}
+        }}
+
+        // Star Rating selector listener
+        document.querySelectorAll("#modal-rating span").forEach(star => {{
+            star.addEventListener("click", () => {{
+                currentRating = parseInt(star.dataset.val);
+                renderRating(currentRating);
+            }});
+        }});
+
+        // Add Personal Trigger handlers
+        document.getElementById("btn-add-trigger").addEventListener("click", () => {{
+            const input = document.getElementById("input-new-trigger");
+            const val = input.value.trim();
+            if (val && !currentPersonalTriggers.includes(val)) {{
+                currentPersonalTriggers.push(val);
+                renderPersonalTriggers();
+            }}
+            input.value = "";
+        }});
+        document.getElementById("input-new-trigger").addEventListener("keydown", (e) => {{
+            if (e.key === "Enter") {{
+                e.preventDefault();
+                document.getElementById("btn-add-trigger").click();
+            }}
+        }});
+
+        // Add Collection handlers
+        document.getElementById("btn-add-collection").addEventListener("click", () => {{
+            const input = document.getElementById("input-new-collection");
+            const val = input.value.trim();
+            if (val && !currentCollections.includes(val)) {{
+                currentCollections.push(val);
+                renderCollections();
+            }}
+            input.value = "";
+        }});
+        document.getElementById("input-new-collection").addEventListener("keydown", (e) => {{
+            if (e.key === "Enter") {{
+                e.preventDefault();
+                document.getElementById("btn-add-collection").click();
+            }}
+        }});
+
+        // Copy Combined Triggers handler
+        document.getElementById("modal-btn-copy-all-triggers").addEventListener("click", () => {{
+            if (!currentModalCard) return;
+            const officialTriggers = JSON.parse(currentModalCard.dataset.officialTriggers || "[]");
+            const combined = [...officialTriggers, ...currentPersonalTriggers];
+            const text = combined.join(", ");
+            
+            if (text) {{
+                navigator.clipboard.writeText(text).then(() => {{
+                    const btn = document.getElementById("modal-btn-copy-all-triggers");
+                    const originalText = btn.textContent;
+                    btn.textContent = "Copied!";
+                    setTimeout(() => btn.textContent = originalText, 1500);
+                }});
+            }}
+        }});
+
+        // Modal Save button handler
+        document.getElementById("modal-btn-save").addEventListener("click", () => {{
+            if (!currentModalCard) return;
+            
+            const relPath = currentModalCard.dataset.path;
+            const notesVal = document.getElementById("modal-notes").value;
+            
+            const payload = {{
+                relative_path: relPath,
+                user_data: {{
+                    personal_trigger_words: currentPersonalTriggers,
+                    notes: notesVal,
+                    rating: currentRating,
+                    collections: currentCollections
+                }}
+            }};
+            
+            const saveBtn = document.getElementById("modal-btn-save");
+            saveBtn.textContent = "Saving...";
+            saveBtn.disabled = true;
+            
+            fetch("/api/save_user_data", {{
+                method: "POST",
+                headers: {{
+                    "Content-Type": "application/json"
+                }},
+                body: JSON.stringify(payload)
+            }})
+            .then(res => {{
+                if (!res.ok) throw new Error("Save request failed.");
+                return res.json();
+            }})
+            .then(data => {{
+                saveBtn.textContent = "Saved!";
+                
+                // Update datasets in-memory
+                currentModalCard.dataset.collections = JSON.stringify(currentCollections);
+                currentModalCard.dataset.rating = currentRating;
+                
+                // Redraw indicators
+                updateCardIndicators(currentModalCard, notesVal, currentPersonalTriggers, currentRating, currentCollections);
+                
+                // Update collection select options in-memory
+                updateCollectionFilterOptions();
+                
+                setTimeout(() => {{
+                    saveBtn.textContent = "Save Changes";
+                    saveBtn.disabled = false;
+                    closeDetailsModal();
+                }}, 1000);
+            }})
+            .catch(err => {{
+                console.error(err);
+                alert("Failed to save changes. Make sure the local python server is running.");
+                saveBtn.textContent = "Save Changes";
+                saveBtn.disabled = false;
+            }});
+        }});
+
+        // Card Indicator drawing helper
+        function updateCardIndicators(card, notes, personalTriggers, rating, collections) {{
+            const previewDiv = card.querySelector(".preview");
+            let indicatorsContainer = previewDiv.querySelector(".card-indicators");
+            
+            const hasNotes = notes && notes.trim() !== "";
+            const hasTriggers = personalTriggers && personalTriggers.length > 0;
+            const hasRating = rating && rating > 0;
+            
+            if (!hasNotes && !hasTriggers && !hasRating) {{
+                if (indicatorsContainer) indicatorsContainer.remove();
+                return;
+            }}
+            
+            if (!indicatorsContainer) {{
+                indicatorsContainer = document.createElement("div");
+                indicatorsContainer.className = "card-indicators";
+                previewDiv.appendChild(indicatorsContainer);
+            }}
+            
+            indicatorsContainer.innerHTML = "";
+            
+            if (hasNotes) {{
+                const span = document.createElement("span");
+                span.className = "indicator-badge";
+                span.title = "Has Personal Notes";
+                span.textContent = "📝 Notes";
+                indicatorsContainer.appendChild(span);
+            }}
+            if (hasTriggers) {{
+                const span = document.createElement("span");
+                span.className = "indicator-badge";
+                span.title = "Has Personal Triggers";
+                span.textContent = "🏷️ Personal Triggers";
+                indicatorsContainer.appendChild(span);
+            }}
+            if (hasRating) {{
+                const span = document.createElement("span");
+                span.className = "indicator-badge";
+                span.title = `Rating: ${{rating}}/5`;
+                span.textContent = `⭐ ${{rating}}`;
+                indicatorsContainer.appendChild(span);
+            }}
+        }}
+
+        // Populate collection dropdown select from active cards dataset
+        function updateCollectionFilterOptions() {{
+            const collectionSelect = document.getElementById("filter-collection");
+            if (!collectionSelect) return;
+            
+            const currentSelected = collectionSelect.value;
+            const collectionsSet = new Set();
+            
+            document.querySelectorAll(".card").forEach(card => {{
+                try {{
+                    const cardColls = JSON.parse(card.dataset.collections || "[]");
+                    cardColls.forEach(c => {{
+                        if (c && c.trim()) collectionsSet.add(c.trim());
+                    }});
+                }} catch (e) {{}}
+            }});
+            
+            collectionSelect.innerHTML = '<option value="">All Collections</option>';
+            const sortedCollections = Array.from(collectionsSet).sort((a, b) => a.localeCompare(b));
+            sortedCollections.forEach(c => {{
+                const opt = document.createElement("option");
+                opt.value = c;
+                opt.textContent = c;
+                collectionSelect.appendChild(opt);
+            }});
+            
+            if (collectionsSet.has(currentSelected)) {{
+                collectionSelect.value = currentSelected;
+            }} else {{
+                collectionSelect.value = "";
+            }}
+        }}
+
+        // Load summaries for indicators on load
+        function loadUserDataSummary() {{
+            fetch("/api/user_data_summary")
+                .then(res => {{
+                    if (!res.ok) throw new Error("Summary request failed.");
+                    return res.json();
+                }})
+                .then(summary => {{
+                    Object.entries(summary).forEach(([relPath, data]) => {{
+                        const card = document.querySelector(`.card[data-path="${{relPath}}"]`);
+                        if (card) {{
+                            card.dataset.rating = data.rating || 0;
+                            card.dataset.collections = JSON.stringify(data.collections || []);
+                            // Use dummy strings to indicate presence for local state
+                            updateCardIndicators(
+                                card,
+                                data.has_notes ? "yes" : "",
+                                data.has_personal_triggers ? ["dummy"] : [],
+                                data.rating,
+                                data.collections || []
+                            );
+                        }}
+                    }});
+                    updateCollectionFilterOptions();
+                }})
+                .catch(err => {{
+                    console.log("Local API server not active or summary fetch failed. Offline fallback mode.");
+                }});
+        }}
+
+        // Modal Close Button click listener
+        document.querySelector(".modal-close").addEventListener("click", closeDetailsModal);
+
+        // Modal backdrop click listener
+        document.getElementById("details-modal").addEventListener("click", (e) => {{
+            if (e.target === document.getElementById("details-modal")) {{
+                closeDetailsModal();
+            }}
+        }});
+
+        // Bind Details button clicks (event delegation)
+        grid.addEventListener("click", (e) => {{
+            const detailsBtn = e.target.closest(".btn-details");
+            if (!detailsBtn) return;
+            
+            const card = detailsBtn.closest(".card");
+            if (!card) return;
+            
+            const path = card.dataset.path;
+            
+            // Lazy load user data from API server
+            fetch(`/api/get_user_data?relative_path=${{encodeURIComponent(path)}}`)
+                .then(res => {{
+                    if (!res.ok) throw new Error("Failed to load user data sidecar.");
+                    return res.json();
+                }})
+                .then(userData => {{
+                    openDetailsModal(card, userData);
+                }})
+                .catch(err => {{
+                    console.warn("API server not active, using empty fallback state:", err);
+                    openDetailsModal(card, {{
+                        personal_trigger_words: [],
+                        notes: "",
+                        rating: 0,
+                        collections: []
+                    }});
+                }});
+        }});
+
         // Event Listeners for controls
         searchInput.addEventListener("input", updateFilter);
         sortSelect.addEventListener("change", performSort);
+        
+        // Collection filter listener
+        const filterCollSelect = document.getElementById("filter-collection");
+        if (filterCollSelect) {{
+            filterCollSelect.addEventListener("change", updateFilter);
+        }}
+
         toggleFavBtn.addEventListener("click", () => {{
             toggleFavBtn.classList.toggle("active");
             updateFilter();
-        }});
-
-        document.querySelectorAll(".btn-weight").forEach(btn => {{
-            btn.addEventListener("click", () => setWeight(btn.dataset.weight));
         }});
 
         // Initial setup
@@ -1895,6 +3121,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         performSort();
         updateFilter();
         updatePromptBuilderUI();
+        loadUserDataSummary();
     </script>
 </body>
 </html>

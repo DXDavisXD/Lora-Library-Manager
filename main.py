@@ -26,6 +26,7 @@ from downloader import (
     save_metadata_if_missing,
 )
 from gallery import build_gallery_index, save_gallery_html
+from server import start_server
 from organizer import find_lora_files, organize_library
 
 try:
@@ -83,12 +84,13 @@ def print_menu() -> None:
     print("4. Download previews")
     print("5. Download metadata")
     print("6. Generate Gallery")
-    print("7. Exit")
+    print("7. Start Gallery Server")
+    print("8. Exit")
     dry_status = "ON" if is_dry_run() else "OFF"
     verbose_status = "ON" if is_verbose() else "OFF"
-    print(f"8. Toggle Dry Run Mode (Currently {dry_status})")
-    print(f"9. Toggle Verbose Mode (Currently {verbose_status})")
-    print("10. Set CivitAI API Key")
+    print(f"9. Toggle Dry Run Mode (Currently {dry_status})")
+    print(f"10. Toggle Verbose Mode (Currently {verbose_status})")
+    print("11. Set CivitAI API Key")
     print()
 
 
@@ -340,17 +342,19 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
         summary = refresh_gallery(lora_root)
         print_summary("Gallery generation summary", summary)
     elif choice == "7":
+        start_server(lora_root)
+    elif choice == "8":
         print("Goodbye.")
         return False
-    elif choice == "8":
+    elif choice == "9":
         new_val = not is_dry_run()
         set_dry_run(new_val)
         print(f"Dry run mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "9":
+    elif choice == "10":
         new_val = not is_verbose()
         set_verbose(new_val)
         print(f"Verbose mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "10":
+    elif choice == "11":
         from config import get_civitai_api_key, set_civitai_api_key
         current_key = get_civitai_api_key()
         masked_key = f"{current_key[:4]}...{current_key[-4:]}" if len(current_key) > 8 else "Not Set"
@@ -364,7 +368,7 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
                 set_civitai_api_key(new_key)
                 print("API Key updated and saved.")
     else:
-        print("Please choose a number from 1 to 10.")
+        print("Please choose a number from 1 to 11.")
 
     return True
 
