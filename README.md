@@ -1,13 +1,26 @@
-# LoRA Library Manager (Version 1.0)
+# LoRA Library Manager (Version 1.8)
 
 A high-performance, stable command-line utility and responsive dark-themed web gallery for organizing, hashing, downloading metadata/previews from CivitAI, and building prompts for large libraries of Stable Diffusion LoRA models.
+
+---
+
+## Features
+
+*   **Version Grouping**: Groups multiple versions/variants of a model under a single card, sorted by release version (CivitAI `version_id` descending, falling back to modification time). The latest version is automatically selected by default.
+*   **Dynamic Version Selector**: A dropdown selector on each card allows switching between variants dynamically, instantly updating preview images, tags, trigger words, description, and copy parameters without page refreshes.
+*   **Secure Model Version Deletion**: Delete unwanted variants directly from the gallery interface. Terminates model files, metadata, and preview assets securely via the backend, and automatically cleans up empty parent directories.
+*   **Asynchronous Rebuilds**: Deleted items immediately fade from the gallery DOM, while a background thread updates the `gallery.html` index asynchronously to keep the UI smooth and responsive.
+*   **Library Manifests (Snapshot Backup/Restore)**:
+    *   **Export**: Completely self-contained, offline-friendly snapshot generation that computes SHA256 hashes and builds a full library index including personal ratings, collections, notes, and trigger words.
+    *   **Import**: Restores models from a manifest, automatically resolving files. Includes **Smart Folder Matching** to download new versions directly into folders where other variants of that model are already present, and auto-runs library organization and gallery refresh on completion.
+*   **Unicode Safety**: Fully compatible with international characters and Japanese directory names (like "有馬 かな" and "ツルギ") on Windows CMD/PowerShell consoles without crashing.
 
 ---
 
 ## Requirements
 
 *   **Python**: Python 3.10 or newer.
-*   **Dependencies**: Uses only Python standard library modules (`pathlib`, `shutil`, `json`, `urllib`, `time`, `hashlib`). No external pip dependencies are required.
+*   **Dependencies**: Uses only Python standard library modules (`pathlib`, `shutil`, `json`, `urllib`, `time`, `hashlib`, `socketserver`, `http.server`, `webbrowser`). No external pip dependencies are required.
 *   **Web Browser**: Any modern web browser supporting ES6, CSS Grid, and HTML5 `localStorage` (Chrome, Firefox, Edge, Safari).
 
 ---
@@ -32,13 +45,17 @@ LORA_ROOT/
 │   ├── anima-turbo-lora-v0.2.safetensors
 │   ├── anima-turbo-lora-v0.2.png (local preview image)
 │   └── metadata.json (CivitAI metadata)
-├── Makima (マキマ) - Chainsaw Man/
-│   ├── makima.safetensors
-│   ├── makima.png
-│   └── metadata.json
+├── Kana Arima (有馬 かな)  Tsurugi (ツルギ) - Oshi no Ko (【推しの子】)/
+│   ├── kana-arima-irekomi-illustriousxl-lora-nochekaiser.safetensors
+│   ├── kana-arima-irekomi-illustriousxl-lora-nochekaiser.json
+│   ├── kana-arima-irekomi-illustriousxl-lora-nochekaiser.jpeg
+│   ├── kana-arima-s1s2-illustriousxl-lora-nochekaiser.safetensors
+│   ├── kana-arima-s1s2-illustriousxl-lora-nochekaiser.json
+│   ├── kana-arima-s1s2-illustriousxl-lora-nochekaiser.png
+│   └── metadata.json (shared folder-level index)
 ├── logs/
-│   ├── 2026-06-13.log
-│   └── 2026-06-14.log
+│   ├── 2026-06-15.log
+│   └── 2026-06-16.log
 └── gallery.html (generated dark-theme web preview UI)
 ```
 
@@ -57,58 +74,61 @@ On startup, the manager automatically cleans up stale `.tmp` files (older than 1
 ### Menu Operations
 1.  **Automatic**: Performs a complete workflow: runs file organization, queries CivitAI to download missing metadata and preview images, and refreshes the web gallery.
 2.  **Manual**: Prompts for a single `.safetensors` file path to fetch and save its CivitAI assets locally.
-3.  **Organize only**: Scans `LORA_ROOT` and moves loose `.safetensors`, `.ckpt`, `.pt`, and `.bin` models alongside their matching sidecars into structured folders.
+3.  **Organize only**: Scans `LORA_ROOT` and moves loose `.safetensors`, `.ckpt`, `.pt`, and `.bin` models alongside their matching sidecars into structured folders. Automatically cleans up empty folders and redundant files.
 4.  **Download previews**: Crawls folders and downloads missing preview images from CivitAI.
-5.  **Download metadata**: Crawls folders and fetches missing `metadata.json` files from CivitAI.
+5.  **Download metadata**: Crawls folders and fetches missing metadata json files from CivitAI.
 6.  **Generate Gallery**: Compiles all organized LoRA models, metadata, and preview paths into `gallery.html`.
-7.  **Exit**: Safely closes the CLI menu.
-8.  **Toggle Dry Run Mode**: Toggle non-destructive dry runs. In Dry Run mode, all filesystem writes and downloads are bypassed and reported without modifying files. Saves instantly to `settings.json`.
-9.  **Toggle Verbose Mode**: Toggle detailed terminal log output. Saves instantly to `settings.json`.
+7.  **Start Gallery Server**: Launches a local HTTP server on port 8000 to host the interactive web UI and handle model deletions.
+8.  **Export Library Manifest**: Exports a snapshot containing metadata statistics, active ratings, user collections, notes, and hashes.
+9.  **Import Library Manifest**: Imports a snapshot manifest, downloads missing models/metadata/previews, restores your sidecars, organizes the library, and refreshes the gallery.
+10. **Exit**: Safely closes the CLI menu.
+11. **Toggle Dry Run Mode**: Toggle non-destructive dry runs. In Dry Run mode, all filesystem writes and downloads are bypassed and reported without modifying files. Saves instantly to `settings.json`.
+12. **Toggle Verbose Mode**: Toggle detailed terminal log output. Saves instantly to `settings.json`.
+13. **Set CivitAI API Key**: Set or clear your CivitAI API Key.
 
 ---
 
 ## Web UI & Gallery Features
 
-Open `gallery.html` in your web browser to access the responsive dark-theme dashboard:
+Open `gallery.html` in your web browser (or start the server using Option 7) to access the responsive dark-theme dashboard:
 
-### 1. Collapsible Trigger Word Groups
+### 1. Multi-Version Card UI
+*   **Version Dropdown**: Located directly on each card, letting you toggle between versions. Swapping a version instantly updates the active preview image, descriptions, tags, and builder hooks.
+*   **Ellipsis Text Truncation**: Supports long version name strings gracefully inside a flexible card layout.
+*   **Variant Deletion**: A delete button next to the dropdown deletes specific files (Safetensors, metadata, preview) from your system securely.
+
+### 2. Collapsible Trigger Word Groups
 *   **Outfit & Preset Preservations**: Instead of flattening trigger words, the gallery groups them by style presets extracted directly from CivitAI metadata (e.g. `School Uniform`, `White Dress`, `Casual`).
 *   **Accordion Folders**: Groups render collapsed by default to save card space. Click any group header to expand it with a smooth animation.
 *   **Copy Button per Group**: Click the inline copy icon on any group header to copy only the trigger words contained in that specific style group to your clipboard.
 
-### 2. Interactive Prompt Builder Panel
+### 3. Interactive Prompt Builder Panel
 *   **Docked Panel**: A persistent builder panel sits anchored at the bottom of the page, showing the active LoRA tokens in your prompt.
 *   **Add to Prompt**: Click `[+ Add to Prompt]` on any card. It appends `<lora:filename_without_extension:selected_weight>` using the global weight selector's current value.
 *   **Tag Weight Selectors**: Select Copy weights (`0.6`, `0.8`, `1.0`, `1.2`) in the top toolbar. The builder remembers the last selected weight using `localStorage`.
 *   **Token Management**: Click the close `×` button on any token to remove it individually, clear the entire builder with `Clear All`, or copy the combined spaced-separated prompt string using `Copy Prompt`.
 
-### 3. Smart Search & Filters
+### 4. Smart Search & Filters
 *   **Global Search**: Instantly searches by model name, folder name, descriptions, tags, creator usernames, and hidden trigger fields.
-*   **Favorites Filter**: Persists favorited models in browser `localStorage` using their SHA256 hash (or relative path if missing). Click the favorite toggle to display only starred items. Filters work dynamically alongside text searches.
-*   **Double-click Triggers**: Double-clicking the card preview image copies all trigger words for that model immediately and displays a temporary "Triggers Copied!" feedback message.
+*   **Favorites Filter**: Persists favorited models in browser `localStorage` using their SHA256 hash. Click the favorite toggle to display only starred items.
+*   **Double-click Triggers**: Double-clicking the card preview image copies all trigger words for that model version immediately.
 
-### 4. Accessibility Support
+### 5. Accessibility Support
 *   **Full Keyboard Navigation**: Navigate all buttons, favorites, triggers, dropdowns, and prompt builder items using the `Tab` key.
 *   **Action Triggers**: Press `Enter` or `Space` on any focused header or button to expand groups, toggle favorites, copy tags, or clear tokens.
 *   **ARIA attributes**: All interactive icons, input elements, and buttons utilize semantic ARIA labels for screen readers.
 
-### 5. Keyboard Shortcuts
+### 6. Keyboard Shortcuts
 *   `Ctrl+F` (or `Cmd+F`): Focuses and highlights the search input.
 *   `Escape`: Instantly clears search text, blurs focus, and resets filters.
 
 ---
 
-## Example Workflow
+## Changelog
 
-### Scenario: Organizing and Generating a Prompt
-1.  Place a fresh set of downloaded LoRA models into your `LORA_ROOT` folder.
-2.  Start `main.py` and run option `1` (Automatic). The manager will:
-    *   Scan and organize files into folders like `Anima Turbo LoRA/`.
-    *   Compute the SHA256 hash of each safetensors file and query the CivitAI API.
-    *   Download preview images and `metadata.json` files.
-    *   Compile `gallery.html`.
-3.  Open `gallery.html` in a web browser.
-4.  Use `Ctrl+F` to search for your model (e.g. `Makima`).
-5.  In the top toolbar, select weight `0.8`.
-6.  Click `[+ Add to Prompt]` on the Makima card. The prompt builder panel opens displaying `<lora:makima:0.8>`.
-7.  Click `Copy Prompt` to copy the ready-to-use tag string for WebUI generation.
+### Version 1.8.0
+*   **Version Grouping**: Groups multiple versions of a model under one card, sorted by CivitAI version ID (descending) so the latest release is selected by default.
+*   **Dynamic UI Dropdowns**: Switching variants dynamically updates preview images, descriptions, tags, and builder hooks in real-time.
+*   **Model Deletion Support**: Integrated a delete button directly inside the web UI, securely erasing models and sidecars, automatically cleaning up parent folders, and refreshing the gallery asynchronously in a background thread.
+*   **Manifest Exports & Imports**: Added offline snapshot export support and smart folder matching during import to download files directly into existing folders of the same model. Added automatic organizer and gallery refresh post-import.
+*   **Unicode Safety**: Added safety checks to prevent UnicodeEncodeError crashes when handling directories with international characters in Windows consoles.
