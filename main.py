@@ -79,20 +79,16 @@ def cleanup_stale_tmp_files(lora_root: Path) -> None:
 # Print the main menu options.
 def print_menu() -> None:
     print("1. Automatic")
-    print("2. Manual")
-    print("3. Organize only")
-    print("4. Download previews")
-    print("5. Download metadata")
-    print("6. Generate Gallery")
-    print("7. Start Gallery Server")
-    print("8. Export Library Manifest")
-    print("9. Import Library Manifest")
-    print("10. Exit")
+    print("2. Manual Operations Submenu")
+    print("3. Start Gallery Server")
+    print("4. Export Library Manifest")
+    print("5. Import Library Manifest")
+    print("6. Exit")
     dry_status = "ON" if is_dry_run() else "OFF"
     verbose_status = "ON" if is_verbose() else "OFF"
-    print(f"11. Toggle Dry Run Mode (Currently {dry_status})")
-    print(f"12. Toggle Verbose Mode (Currently {verbose_status})")
-    print("13. Set CivitAI API Key")
+    print(f"7. Toggle Dry Run Mode (Currently {dry_status})")
+    print(f"8. Toggle Verbose Mode (Currently {verbose_status})")
+    print("9. Set CivitAI API Key")
     print()
 
 
@@ -358,21 +354,37 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
     if choice == "1":
         print_summary("Automatic summary", run_automatic(lora_root))
     elif choice == "2":
-        print_summary("Manual summary", run_manual())
+        while True:
+            print("\n--- Manual Operations Submenu ---")
+            print("1. Process Single File")
+            print("2. Organize Only")
+            print("3. Download Previews Only")
+            print("4. Download Metadata Only")
+            print("5. Generate Gallery Only")
+            print("6. Go Back to Main Menu")
+            print()
+            sub_choice = input("Choose a manual option: ").strip()
+            
+            if sub_choice == "1":
+                print_summary("Manual summary", run_manual())
+            elif sub_choice == "2":
+                print_summary("Organize summary", run_organize(lora_root))
+            elif sub_choice == "3":
+                summary = run_asset_job(lora_root, download_metadata=False, download_preview=True)
+                print_summary("Preview download summary", summary)
+            elif sub_choice == "4":
+                summary = run_asset_job(lora_root, download_metadata=True, download_preview=False)
+                print_summary("Metadata download summary", summary)
+            elif sub_choice == "5":
+                summary = refresh_gallery(lora_root)
+                print_summary("Gallery generation summary", summary)
+            elif sub_choice == "6":
+                break
+            else:
+                print("Please choose a number from 1 to 6.")
     elif choice == "3":
-        print_summary("Organize summary", run_organize(lora_root))
-    elif choice == "4":
-        summary = run_asset_job(lora_root, download_metadata=False, download_preview=True)
-        print_summary("Preview download summary", summary)
-    elif choice == "5":
-        summary = run_asset_job(lora_root, download_metadata=True, download_preview=False)
-        print_summary("Metadata download summary", summary)
-    elif choice == "6":
-        summary = refresh_gallery(lora_root)
-        print_summary("Gallery generation summary", summary)
-    elif choice == "7":
         start_server(lora_root)
-    elif choice == "8":
+    elif choice == "4":
         manifest_filename = input("Enter output manifest filename (default: library_manifest.json): ").strip()
         if not manifest_filename:
             manifest_filename = "library_manifest.json"
@@ -381,7 +393,7 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
             manifest_path = lora_root / manifest_path
         from manifest import export_library_manifest
         export_library_manifest(lora_root, manifest_path)
-    elif choice == "9":
+    elif choice == "5":
         manifest_filename = input("Enter input manifest filename (default: library_manifest.json): ").strip()
         if not manifest_filename:
             manifest_filename = "library_manifest.json"
@@ -399,18 +411,18 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
         # Automatically refresh the gallery to reflect changes
         print("\nRefreshing gallery...")
         refresh_gallery(lora_root)
-    elif choice == "10":
+    elif choice == "6":
         print("Goodbye.")
         return False
-    elif choice == "11":
+    elif choice == "7":
         new_val = not is_dry_run()
         set_dry_run(new_val)
         print(f"Dry run mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "12":
+    elif choice == "8":
         new_val = not is_verbose()
         set_verbose(new_val)
         print(f"Verbose mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "13":
+    elif choice == "9":
         from config import get_civitai_api_key, set_civitai_api_key
         current_key = get_civitai_api_key()
         masked_key = f"{current_key[:4]}...{current_key[-4:]}" if len(current_key) > 8 else "Not Set"
@@ -424,7 +436,7 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
                 set_civitai_api_key(new_key)
                 print("API Key updated and saved.")
     else:
-        print("Please choose a number from 1 to 13.")
+        print("Please choose a number from 1 to 9.")
 
     return True
 

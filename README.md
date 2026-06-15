@@ -73,18 +73,20 @@ On startup, the manager automatically cleans up stale `.tmp` files (older than 1
 
 ### Menu Operations
 1.  **Automatic**: Performs a complete workflow: runs file organization, queries CivitAI to download missing metadata and preview images, and refreshes the web gallery.
-2.  **Manual**: Prompts for a single `.safetensors` file path to fetch and save its CivitAI assets locally.
-3.  **Organize only**: Scans `LORA_ROOT` and moves loose `.safetensors`, `.ckpt`, `.pt`, and `.bin` models alongside their matching sidecars into structured folders. Automatically cleans up empty folders and redundant files.
-4.  **Download previews**: Crawls folders and downloads missing preview images from CivitAI.
-5.  **Download metadata**: Crawls folders and fetches missing metadata json files from CivitAI.
-6.  **Generate Gallery**: Compiles all organized LoRA models, metadata, and preview paths into `gallery.html`.
-7.  **Start Gallery Server**: Launches a local HTTP server on port 8000 to host the interactive web UI and handle model deletions.
-8.  **Export Library Manifest**: Exports a snapshot containing metadata statistics, active ratings, user collections, notes, and hashes.
-9.  **Import Library Manifest**: Imports a snapshot manifest, downloads missing models/metadata/previews, restores your sidecars, organizes the library, and refreshes the gallery.
-10. **Exit**: Safely closes the CLI menu.
-11. **Toggle Dry Run Mode**: Toggle non-destructive dry runs. In Dry Run mode, all filesystem writes and downloads are bypassed and reported without modifying files. Saves instantly to `settings.json`.
-12. **Toggle Verbose Mode**: Toggle detailed terminal log output. Saves instantly to `settings.json`.
-13. **Set CivitAI API Key**: Set or clear your CivitAI API Key.
+2.  **Manual Operations Submenu**: Opens a sub-menu containing targeted manual operations:
+    *   *Process Single File*: Prompts for a single `.safetensors` file path to fetch and save its CivitAI assets locally.
+    *   *Organize Only*: Scans `LORA_ROOT` and moves loose `.safetensors`, `.ckpt`, `.pt`, and `.bin` models alongside their matching sidecars into structured folders, cleaning up empty folders.
+    *   *Download Previews Only*: Crawls folders and downloads missing preview images from CivitAI.
+    *   *Download Metadata Only*: Crawls folders and fetches missing metadata json files from CivitAI.
+    *   *Generate Gallery Only*: Compiles all organized LoRA models, metadata, and preview paths into `gallery.html`.
+    *   *Go Back to Main Menu*: Returns to the main menu.
+3.  **Start Gallery Server**: Launches a local HTTP server on port 8000 to host the interactive web UI and handle model deletions.
+4.  **Export Library Manifest**: Exports a snapshot containing metadata statistics, active ratings, user collections, notes, and hashes.
+5.  **Import Library Manifest**: Imports a snapshot manifest, downloads missing models/metadata/previews, restores your sidecars, organizes the library, and refreshes the gallery.
+6.  **Exit**: Safely closes the CLI menu.
+7.  **Toggle Dry Run Mode**: Toggle non-destructive dry runs. In Dry Run mode, all filesystem writes and downloads are bypassed and reported without modifying files. Saves instantly to `settings.json`.
+8.  **Toggle Verbose Mode**: Toggle detailed terminal log output. Saves instantly to `settings.json`.
+9.  **Set CivitAI API Key**: Set or clear your CivitAI API Key.
 
 ---
 
