@@ -123,15 +123,27 @@ def save_metadata_if_missing(model_folder: Path, civitai_metadata: dict) -> dict
         return make_status("error", target_path, str(e))
 
 
-# Extract image URLs from a list of CivitAI image objects.
+# Extract image URLs from a list of CivitAI image objects, filtering out videos.
 def extract_urls_from_images(images: list) -> list[str]:
     urls = []
 
     for image in images:
         if isinstance(image, dict) and image.get("url"):
-            urls.append(image["url"])
+            # Skip videos based on metadata type
+            if image.get("type") == "video":
+                continue
+
+            # Skip videos based on URL file extension
+            url = image["url"]
+            path = urlparse(url).path
+            suffix = Path(path).suffix.lower()
+            if suffix in {".mp4", ".webm", ".mkv", ".mov", ".avi"}:
+                continue
+
+            urls.append(url)
 
     return urls
+
 
 
 # Find the best available preview image URL inside CivitAI metadata.
