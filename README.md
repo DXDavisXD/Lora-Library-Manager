@@ -1,4 +1,4 @@
-# LoRA Library Manager (Version 1.8)
+# LoRA Library Manager (Version 2.0)
 
 A high-performance, stable command-line utility and responsive dark-themed web gallery for organizing, hashing, downloading metadata/previews from CivitAI, and building prompts for large libraries of Stable Diffusion LoRA models.
 
