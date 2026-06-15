@@ -74,45 +74,115 @@ def get_model_stem(model_folder: Path) -> str:
     return model_folder.name
 
 
-# Return the standard same-basename preview image path for a model folder.
-def preview_image_path(model_folder: Path) -> Path:
-    return model_folder / f"{get_model_stem(model_folder)}.png"
+# Helper to resolve folder and stem from file or folder path
+def _resolve_model_path_info(model_path: Path) -> tuple[Path, str]:
+    if model_path.is_dir():
+        model_folder = model_path
+        model_files = find_model_files(model_folder)
+        model_stem = model_files[0].stem if model_files else model_folder.name
+    else:
+        model_folder = model_path.parent
+        model_stem = model_path.stem
+    return model_folder, model_stem
 
 
-# Check whether a preview image already exists in a model folder.
-def preview_image_exists(model_folder: Path) -> bool:
-    return preview_image_path(model_folder).exists()
+# Return the standard same-basename preview image path for a model folder or file.
+def preview_image_path(model_path: Path) -> Path:
+    model_folder, model_stem = _resolve_model_path_info(model_path)
+    return model_folder / f"{model_stem}.png"
 
 
-# Return the metadata file path for a model folder.
-def metadata_path(model_folder: Path) -> Path:
-    return model_folder / METADATA_FILENAME
+# Check whether a preview image already exists for a model file or folder.
+def preview_image_exists(model_path: Path) -> bool:
+    model_folder, model_stem = _resolve_model_path_info(model_path)
+    return any((model_folder / f"{model_stem}{ext}").exists() for ext in PREVIEW_EXTENSIONS)
 
 
-# Check whether a model folder already has all completed download assets.
-def model_assets_complete(model_folder: Path) -> bool:
-    return metadata_path(model_folder).exists() and preview_image_exists(model_folder)
+# Return the metadata file path for a model folder or file.
+def metadata_path(model_path: Path) -> Path:
+    model_folder, model_stem = _resolve_model_path_info(model_path)
+    return model_folder / f"{model_stem}.json"
 
 
-# Save CivitAI metadata to metadata.json without overwriting an existing file.
-def save_metadata_if_missing(model_folder: Path, civitai_metadata: dict) -> dict:
-    target_path = metadata_path(model_folder)
+def metadata_belongs_to_file(metadata: dict, filename: str) -> bool:
+    if not metadata:
+        return False
+    unwrapped = unwrap_civitai_metadata(metadata)
+    files = unwrapped.get("files", [])
+    if isinstance(files, list) and len(files) > 0:
+        for f in files:
+            if isinstance(f, dict) and f.get("name") == filename:
+                return True
+        return False
+    return True
 
+
+def model_file_assets_complete(model_file: Path) -> bool:
+    model_folder = model_file.parent
+    model_stem = model_file.stem
+    
+    metadata_exists = False
+    for path in [model_folder / f"{model_stem}.json", model_folder / f"{model_stem}.civitai.info", model_folder / "metadata.json"]:
+        if path.exists():
+            try:
+                with path.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if metadata_belongs_to_file(data, model_file.name):
+                        metadata_exists = True
+                        break
+            except Exception:
+                pass
+
+    preview_exists = any((model_folder / f"{model_stem}{ext}").exists() for ext in PREVIEW_EXTENSIONS)
+    return metadata_exists and preview_exists
+
+
+
+# Check whether a model folder or specific model file already has all completed download assets.
+def model_assets_complete(model_path: Path) -> bool:
+    if model_path.is_dir():
+        model_folder = model_path
+        model_files = find_model_files(model_folder)
+        if not model_files:
+            return False
+        return all(model_file_assets_complete(f) for f in model_files)
+    else:
+        return model_file_assets_complete(model_path)
+
+
+# Save CivitAI metadata to model-specific json sidecar without overwriting.
+def save_metadata_if_missing(model_path: Path, civitai_metadata: dict) -> dict:
+    model_folder, model_stem = _resolve_model_path_info(model_path)
+    target_path = model_folder / f"{model_stem}.json"
+    shared_path = model_folder / "metadata.json"
+
+    # If the target file already exists, skip
     if target_path.exists():
-        return make_status("skipped", target_path, "metadata.json already exists.")
+        return make_status("skipped", target_path, f"{model_stem}.json already exists.")
 
     if is_dry_run():
         log_operation(f"[DRY RUN] Would save metadata to: {target_path}")
-        return make_status("saved", target_path, "metadata.json saved (dry run).")
+        return make_status("saved", target_path, f"{model_stem}.json saved (dry run).")
 
     model_folder.mkdir(parents=True, exist_ok=True)
     tmp_path = target_path.with_suffix(".json.tmp")
     try:
+        unwrapped_data = unwrap_civitai_metadata(civitai_metadata)
         with tmp_path.open("w", encoding="utf-8") as output_file:
-            json.dump(unwrap_civitai_metadata(civitai_metadata), output_file, indent=2)
+            json.dump(unwrapped_data, output_file, indent=2)
         os.replace(tmp_path, target_path)
         log_operation(f"Saved metadata: {target_path}")
-        return make_status("saved", target_path, "metadata.json saved.")
+
+        # For backwards compatibility, also write to metadata.json if missing
+        if not shared_path.exists():
+            try:
+                with shared_path.open("w", encoding="utf-8") as shared_file:
+                    json.dump(unwrapped_data, shared_file, indent=2)
+                log_operation(f"Saved fallback shared metadata: {shared_path}")
+            except OSError:
+                pass
+
+        return make_status("saved", target_path, f"{model_stem}.json saved.")
     except Exception as e:
         if tmp_path.exists():
             try:
@@ -121,6 +191,7 @@ def save_metadata_if_missing(model_folder: Path, civitai_metadata: dict) -> dict
                 pass
         log_operation(f"Error saving metadata to {target_path}: {e}")
         return make_status("error", target_path, str(e))
+
 
 
 # Extract image URLs from a list of CivitAI image objects, filtering out videos.
@@ -225,9 +296,9 @@ def download_many(urls: list[str], destination_dir: Path, retries: int = 3) -> l
     return downloaded_files
 
 
-# Download the preview image for a model folder when no preview exists yet.
-def download_preview_if_missing(model_folder: Path, civitai_metadata: dict, retries: int = 3) -> dict:
-    if preview_image_exists(model_folder):
+# Download the preview image for a model folder or file when no preview exists yet.
+def download_preview_if_missing(model_path: Path, civitai_metadata: dict, retries: int = 3) -> dict:
+    if preview_image_exists(model_path):
         return make_status("skipped", None, "Preview image already exists.")
 
     preview_url = extract_preview_url(civitai_metadata)
@@ -235,13 +306,16 @@ def download_preview_if_missing(model_folder: Path, civitai_metadata: dict, retr
     if not preview_url:
         return make_status("missing", None, "No preview image URL found in CivitAI metadata.")
 
-    target_path = preview_image_path(model_folder)
+    model_folder, model_stem = _resolve_model_path_info(model_path)
+    extension = image_extension_from_url(preview_url)
+    target_path = model_folder / f"{model_stem}{extension}"
     return download_to_path(preview_url, target_path, retries)
 
 
 # Download model assets from CivitAI metadata without overwriting local files.
-def download_model_assets(model_folder: Path, civitai_metadata: dict, retries: int = 3) -> dict:
+def download_model_assets(model_path: Path, civitai_metadata: dict, retries: int = 3) -> dict:
     return {
-        "metadata": save_metadata_if_missing(model_folder, civitai_metadata),
-        "preview_image": download_preview_if_missing(model_folder, civitai_metadata, retries),
+        "metadata": save_metadata_if_missing(model_path, civitai_metadata),
+        "preview_image": download_preview_if_missing(model_path, civitai_metadata, retries),
     }
+

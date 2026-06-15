@@ -25,7 +25,7 @@ from downloader import (
     preview_image_exists,
     save_metadata_if_missing,
 )
-from gallery import build_gallery_index, save_gallery_html
+from gallery import build_gallery_index, save_gallery_html, metadata_belongs_to_file
 from server import start_server
 from organizer import find_lora_files, organize_library
 
@@ -85,12 +85,14 @@ def print_menu() -> None:
     print("5. Download metadata")
     print("6. Generate Gallery")
     print("7. Start Gallery Server")
-    print("8. Exit")
+    print("8. Export Library Manifest")
+    print("9. Import Library Manifest")
+    print("10. Exit")
     dry_status = "ON" if is_dry_run() else "OFF"
     verbose_status = "ON" if is_verbose() else "OFF"
-    print(f"9. Toggle Dry Run Mode (Currently {dry_status})")
-    print(f"10. Toggle Verbose Mode (Currently {verbose_status})")
-    print("11. Set CivitAI API Key")
+    print(f"11. Toggle Dry Run Mode (Currently {dry_status})")
+    print(f"12. Toggle Verbose Mode (Currently {verbose_status})")
+    print("13. Set CivitAI API Key")
     print()
 
 
@@ -111,15 +113,42 @@ def find_safetensors_files(folder: Path) -> list[Path]:
     ]
 
 
-# Load local metadata.json for a model folder when it exists.
-def load_existing_metadata(model_folder: Path) -> dict | None:
-    path = metadata_path(model_folder)
+# Load local metadata for a model folder or file when it exists.
+def load_existing_metadata(model_path: Path) -> dict | None:
+    if model_path.is_dir():
+        path = model_path / "metadata.json"
+        if not path.exists():
+            return None
+        try:
+            with path.open("r", encoding="utf-8") as metadata_file:
+                return json.load(metadata_file)
+        except Exception:
+            return None
+    else:
+        # Check <stem>.json first
+        path = model_path.parent / f"{model_path.stem}.json"
+        if path.exists():
+            try:
+                with path.open("r", encoding="utf-8") as metadata_file:
+                    data = json.load(metadata_file)
+                    if metadata_belongs_to_file(data, model_path.name):
+                        return data
+            except Exception:
+                pass
+                
+        # Check metadata.json fallback
+        path = model_path.parent / "metadata.json"
+        if path.exists():
+            try:
+                with path.open("r", encoding="utf-8") as metadata_file:
+                    data = json.load(metadata_file)
+                    if metadata_belongs_to_file(data, model_path.name):
+                        return data
+            except Exception:
+                pass
 
-    if not path.exists():
-        return None
+    return None
 
-    with path.open("r", encoding="utf-8") as metadata_file:
-        return json.load(metadata_file)
 
 
 # Add one result status to a summary counter.
@@ -167,15 +196,14 @@ def process_model_assets(
 ) -> dict[str, int]:
     summary = create_asset_summary()
     summary["models_checked"] = 1
-    model_folder = model_file.parent
 
-    if model_assets_complete(model_folder):
+    if model_assets_complete(model_file):
         summary["completed_skipped"] += 1
         return summary
 
-    metadata = load_existing_metadata(model_folder)
+    metadata = load_existing_metadata(model_file)
     needs_remote_metadata = metadata is None and (
-        download_metadata or (download_preview and not preview_image_exists(model_folder))
+        download_metadata or (download_preview and not preview_image_exists(model_file))
     )
 
     if needs_remote_metadata:
@@ -186,14 +214,15 @@ def process_model_assets(
             return summary
 
     if download_metadata and metadata is not None:
-        status = save_metadata_if_missing(model_folder, metadata)
+        status = save_metadata_if_missing(model_file, metadata)
         count_status(summary, "metadata", status["status"])
 
     if download_preview and metadata is not None:
-        status = download_preview_if_missing(model_folder, metadata, retries)
+        status = download_preview_if_missing(model_file, metadata, retries)
         count_status(summary, "preview_image", status["status"])
 
     return summary
+
 
 
 # Merge one summary dictionary into another summary dictionary.
@@ -344,17 +373,44 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
     elif choice == "7":
         start_server(lora_root)
     elif choice == "8":
+        manifest_filename = input("Enter output manifest filename (default: library_manifest.json): ").strip()
+        if not manifest_filename:
+            manifest_filename = "library_manifest.json"
+        manifest_path = Path(manifest_filename)
+        if not manifest_path.is_absolute():
+            manifest_path = lora_root / manifest_path
+        from manifest import export_library_manifest
+        export_library_manifest(lora_root, manifest_path)
+    elif choice == "9":
+        manifest_filename = input("Enter input manifest filename (default: library_manifest.json): ").strip()
+        if not manifest_filename:
+            manifest_filename = "library_manifest.json"
+        manifest_path = Path(manifest_filename)
+        if not manifest_path.is_absolute():
+            manifest_path = lora_root / manifest_path
+        from manifest import import_library_manifest
+        import_library_manifest(lora_root, manifest_path)
+        
+        # Automatically organize the imported files into their proper folders
+        print("\nRunning library organizer to place imported models in their folders...")
+        from organizer import organize_library
+        organize_library(lora_root, lora_root)
+        
+        # Automatically refresh the gallery to reflect changes
+        print("\nRefreshing gallery...")
+        refresh_gallery(lora_root)
+    elif choice == "10":
         print("Goodbye.")
         return False
-    elif choice == "9":
+    elif choice == "11":
         new_val = not is_dry_run()
         set_dry_run(new_val)
         print(f"Dry run mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "10":
+    elif choice == "12":
         new_val = not is_verbose()
         set_verbose(new_val)
         print(f"Verbose mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "11":
+    elif choice == "13":
         from config import get_civitai_api_key, set_civitai_api_key
         current_key = get_civitai_api_key()
         masked_key = f"{current_key[:4]}...{current_key[-4:]}" if len(current_key) > 8 else "Not Set"
@@ -368,7 +424,7 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
                 set_civitai_api_key(new_key)
                 print("API Key updated and saved.")
     else:
-        print("Please choose a number from 1 to 11.")
+        print("Please choose a number from 1 to 13.")
 
     return True
 

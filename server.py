@@ -9,7 +9,7 @@ from pathlib import Path
 import os
 import sys
 
-from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, log_operation
+from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, PREVIEW_EXTENSIONS, log_operation
 
 class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, lora_root: Path = None, **kwargs):
@@ -48,6 +48,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/save_user_data":
             self.handle_save_user_data()
+        elif self.path == "/api/delete_model_version":
+            self.handle_delete_model_version()
         else:
             self.send_error_response(404, "Not Found")
 
@@ -211,6 +213,105 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(400, "Invalid JSON payload")
         except Exception as e:
             self.send_error_response(500, f"Server Error: {e}")
+
+    def handle_delete_model_version(self):
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            data = json.loads(post_data.decode('utf-8'))
+            relative_path = data.get("relative_path")
+            
+            if not relative_path:
+                self.send_error_response(400, "Missing relative_path")
+                return
+            
+            target_model_file = (self.lora_root / relative_path).resolve()
+            if not target_model_file.is_relative_to(self.lora_root.resolve()):
+                self.send_error_response(403, "Access Denied: Path traversal detected")
+                return
+
+            if not target_model_file.exists():
+                self.send_error_response(404, "Model file not found")
+                return
+            
+            model_folder = target_model_file.parent
+            model_stem = target_model_file.stem
+            
+            files_to_delete = [target_model_file]
+            
+            # Identify sidecars: <stem>.json and <stem>.civitai.info
+            json_sidecar = model_folder / f"{model_stem}.json"
+            if json_sidecar.exists():
+                files_to_delete.append(json_sidecar)
+                
+            civitai_info_sidecar = model_folder / f"{model_stem}.civitai.info"
+            if civitai_info_sidecar.exists():
+                files_to_delete.append(civitai_info_sidecar)
+                
+            # Previews
+            for ext in PREVIEW_EXTENSIONS:
+                preview_path = model_folder / f"{model_stem}{ext}"
+                if preview_path.exists():
+                    files_to_delete.append(preview_path)
+            
+            # Delete identified files
+            deleted_paths = []
+            for file_path in files_to_delete:
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                        deleted_paths.append(file_path.name)
+                    except OSError as e:
+                        log_operation(f"Error unlinking {file_path}: {e}")
+            
+            log_operation(f"Deleted model version {target_model_file.name} and sidecars: {deleted_paths}")
+            
+            # Check if any other model files remain in the folder
+            remaining_models = []
+            for ext in LORA_EXTENSIONS:
+                for f in model_folder.glob(f"*{ext}"):
+                    if is_lora_file(f):
+                        remaining_models.append(f)
+                        
+            folder_cleaned = False
+            if not remaining_models:
+                # No models left in this folder! Delete all remaining files and rmdir
+                for extra in list(model_folder.glob("*")):
+                    if extra.is_file():
+                        try:
+                            extra.unlink()
+                        except OSError:
+                            pass
+                try:
+                    model_folder.rmdir()
+                    folder_cleaned = True
+                    log_operation(f"Removed empty model folder: {model_folder}")
+                except OSError as e:
+                    log_operation(f"Error removing model folder {model_folder}: {e}")
+            
+            # Automatically refresh gallery HTML in a background thread to reflect the deletion without blocking the UI
+            import threading
+            def bg_refresh():
+                try:
+                    from main import refresh_gallery
+                    refresh_gallery(self.lora_root)
+                except Exception as ex:
+                    log_operation(f"Error refreshing gallery HTML after deletion in thread: {ex}")
+            threading.Thread(target=bg_refresh, daemon=True).start()
+            
+            self.send_success_response({
+                "status": "success",
+                "message": f"Deleted model version {target_model_file.name}",
+                "deleted_files": deleted_paths,
+                "folder_removed": folder_cleaned
+            })
+            
+        except json.JSONDecodeError:
+            self.send_error_response(400, "Invalid JSON payload")
+        except Exception as e:
+            self.send_error_response(500, f"Server Error: {e}")
+
 
     def send_success_response(self, response_data):
         self.send_response(200)

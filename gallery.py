@@ -38,25 +38,56 @@ def get_metadata_path(lora_file: Path) -> Path:
     return lora_file.parent / METADATA_FILENAME
 
 
+# Check if metadata belongs to a specific model filename.
+def metadata_belongs_to_file(metadata: dict, filename: str) -> bool:
+    if not metadata:
+        return False
+    unwrapped = unwrap_metadata(metadata)
+    files = unwrapped.get("files", [])
+    if isinstance(files, list) and len(files) > 0:
+        for f in files:
+            if isinstance(f, dict) and f.get("name") == filename:
+                return True
+        return False
+    return True
+
+
 # Load metadata.json or sidecar metadata files from a LoRA model folder if they exist.
 def load_metadata(lora_file: Path) -> dict:
-    # 1. Try standard metadata.json
+    # 1. Try <stem>.json (specific to this version)
+    path = lora_file.parent / f"{lora_file.stem}.json"
+    if path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as metadata_file:
+                data = json.load(metadata_file)
+                if metadata_belongs_to_file(data, lora_file.name):
+                    return data
+        except Exception:
+            pass
+
+    # 2. Try <stem>.civitai.info (specific to this version)
+    path = lora_file.parent / f"{lora_file.stem}.civitai.info"
+    if path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as metadata_file:
+                data = json.load(metadata_file)
+                if metadata_belongs_to_file(data, lora_file.name):
+                    return data
+        except Exception:
+            pass
+
+    # 3. Try standard metadata.json
     path = get_metadata_path(lora_file)
-    if not path.exists():
-        # 2. Try <stem>.json
-        path = lora_file.parent / f"{lora_file.stem}.json"
-    if not path.exists():
-        # 3. Try <stem>.civitai.info
-        path = lora_file.parent / f"{lora_file.stem}.civitai.info"
+    if path.exists():
+        try:
+            with path.open("r", encoding="utf-8") as metadata_file:
+                data = json.load(metadata_file)
+                if metadata_belongs_to_file(data, lora_file.name):
+                    return data
+        except Exception:
+            pass
 
-    if not path.exists():
-        return {}
-
-    try:
-        with path.open("r", encoding="utf-8") as metadata_file:
-            return json.load(metadata_file)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    return {}
 
 
 
@@ -233,6 +264,9 @@ def build_gallery_entry(lora_file: Path) -> dict:
         relative_path = lora_file.name
 
     sha256 = get_sha256_from_metadata(metadata, lora_file.name)
+    model_id = unwrapped.get("modelId") or model_obj.get("id") or ""
+    version_id = unwrapped.get("id") or ""
+    version_name = unwrapped.get("name") or ""
 
     return {
         "name": get_model_name(metadata, lora_file),
@@ -252,6 +286,9 @@ def build_gallery_entry(lora_file: Path) -> dict:
         "tags": tags,
         "relative_path": relative_path,
         "sha256": sha256,
+        "model_id": model_id,
+        "version_id": version_id,
+        "version_name": version_name,
     }
 
 
@@ -326,60 +363,7 @@ def clean_html_text(text: str) -> str:
     return html.unescape(clean.strip())
 
 
-# Build one HTML card for a gallery entry.
-def build_gallery_card(entry: dict, output_path: Path) -> str:
-    preview_image = relative_asset_path(entry.get("preview_image", ""), output_path)
-    trigger_words = entry.get("trigger_words", [])
-    trigger_text = ", ".join(trigger_words)
-    
-    hidden_search_text = " ".join([
-        entry.get("base_model", ""),
-        entry.get("model_name", ""),
-        entry.get("model_type", ""),
-        entry.get("creator", ""),
-        " ".join(entry.get("tags", []))
-    ]).casefold()
-    
-    desc_raw = entry.get("description", "") or ""
-    desc_clean = clean_html_text(desc_raw)
-    
-    search_text = " ".join(
-        [
-            entry.get("name", ""),
-            entry.get("folder_name", ""),
-            trigger_text,
-            desc_clean,
-            hidden_search_text,
-        ]
-    ).casefold()
-
-    if preview_image:
-        image_html = (
-            f'<img src="{escape_text(preview_image)}" '
-            f'alt="{escape_text(entry.get("name", "LoRA preview"))}" loading="lazy">'
-        )
-    else:
-        image_html = """
-            <div class="missing-preview">
-                <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                </svg>
-                <span>No Preview Available</span>
-            </div>
-        """
-
-    name = entry.get("name", "Untitled LoRA")
-    folder_name = entry.get("folder_name", "")
-    filename = entry.get("filename", "")
-    file_stem = entry.get("file_stem", "")
-    mtime = entry.get("mtime", 0)
-    sha256 = entry.get("sha256", "")
-    relative_path = entry.get("relative_path", "")
-
-    # Build Trigger Groups HTML with Backwards Compatibility
-    trigger_groups = entry.get("trigger_groups", [])
+def build_trigger_groups_html(trigger_words: list, trigger_groups: list) -> str:
     if not trigger_groups and trigger_words:
         trigger_groups = [{
             "title": "Trigger Words",
@@ -421,29 +405,134 @@ def build_gallery_card(entry: dict, output_path: Path) -> str:
             </div>
         </div>
         """
+    return groups_html
 
+
+# Build one HTML card for a gallery entry group.
+def build_gallery_card(group: dict, output_path: Path) -> str:
+    versions = group["versions"]
+    latest_ver = versions[0]
+    
+    # Render version selector dropdown
+    options_html = ""
+    for ver in versions:
+        v_name = ver["version_name"] or ver["file_stem"]
+        options_html += f'<option value="{escape_text(ver["file_stem"])}">{escape_text(v_name)}</option>\n'
+        
+    version_selector_html = f"""
+    <div class="version-selector-container">
+        <span class="version-label">Version:</span>
+        <select class="version-select" aria-label="Select model version">
+            {options_html}
+        </select>
+        <button class="btn-delete-version" aria-label="Delete this version" type="button" tabindex="0">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+        </button>
+    </div>
+    """
+        
+    preview_image = relative_asset_path(latest_ver.get("preview_image", ""), output_path)
+    trigger_words = latest_ver.get("trigger_words", [])
+    trigger_text = ", ".join(trigger_words)
+    
+    hidden_search_text = " ".join([
+        latest_ver.get("base_model", ""),
+        group.get("creator", ""),
+        " ".join(group.get("tags", []))
+    ]).casefold()
+    
+    desc_raw = latest_ver.get("description", "") or ""
+    desc_clean = clean_html_text(desc_raw)
+    
+    all_triggers = []
+    all_stems = []
+    for ver in versions:
+        all_triggers.extend(ver.get("trigger_words", []))
+        all_stems.append(ver.get("file_stem", ""))
+        
+    search_text = " ".join(
+        [
+            group.get("name", ""),
+            group.get("folder_name", ""),
+            ", ".join(all_triggers),
+            " ".join(all_stems),
+            desc_clean,
+            hidden_search_text,
+        ]
+    ).casefold()
+
+    if preview_image:
+        image_html = (
+            f'<img class="card-preview-image" src="{escape_text(preview_image)}" '
+            f'alt="{escape_text(group.get("name", "LoRA preview"))}" loading="lazy">'
+        )
+    else:
+        image_html = """
+            <div class="missing-preview">
+                <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span>No Preview Available</span>
+            </div>
+        """
+
+    name = group.get("name", "Untitled LoRA")
+    folder_name = group.get("folder_name", "")
+    
+    # Serialize versions for JS dynamic updates
+    versions_serialized = []
+    for ver in versions:
+        rel_preview = relative_asset_path(ver.get("preview_image", ""), output_path)
+        v_trigger_words = ver.get("trigger_words", [])
+        v_trigger_groups = ver.get("trigger_groups", [])
+        v_groups_html = build_trigger_groups_html(v_trigger_words, v_trigger_groups)
+        
+        versions_serialized.append({
+            "filename": ver["filename"],
+            "file_stem": ver["file_stem"],
+            "version_name": ver["version_name"],
+            "version_id": ver["version_id"],
+            "preview_image": rel_preview,
+            "trigger_words": v_trigger_words,
+            "trigger_groups_html": v_groups_html,
+            "base_model": ver["base_model"],
+            "description": clean_html_text(ver["description"]),
+            "sha256": ver["sha256"],
+            "relative_path": ver["relative_path"],
+            "mtime": ver["mtime"]
+        })
+        
+    versions_json = json.dumps(versions_serialized)
     trigger_section_html = f"""
         <div class="trigger-groups-container">
-            {groups_html or '<p class="triggers">None found</p>'}
+            {build_trigger_groups_html(trigger_words, latest_ver.get("trigger_groups", [])) or '<p class="triggers">None found</p>'}
         </div>
     """
 
     return f"""
         <article class="card" 
-                 data-search="{escape_text(search_text)}" 
-                 data-name="{escape_text(name)}" 
-                 data-filename="{escape_text(filename)}" 
-                 data-stem="{escape_text(file_stem)}" 
-                 data-mtime="{mtime}" 
-                 data-hash="{escape_text(sha256)}"
-                 data-path="{escape_text(relative_path)}"
-                 data-triggers="{escape_text(trigger_text)}"
-                 data-creator="{escape_text(entry.get('creator', ''))}"
-                 data-base-model="{escape_text(entry.get('base_model', ''))}"
-                 data-description="{escape_text(desc_clean)}"
-                 data-tags="{escape_text(json.dumps(entry.get('tags', [])))}"
-                 data-official-triggers="{escape_text(json.dumps(trigger_words))}"
-                 data-favorite="false">
+                  data-search="{escape_text(search_text)}" 
+                  data-name="{escape_text(name)}" 
+                  data-filename="{escape_text(latest_ver['filename'])}" 
+                  data-stem="{escape_text(latest_ver['file_stem'])}" 
+                  data-mtime="{latest_ver['mtime']}" 
+                  data-hash="{escape_text(latest_ver['sha256'])}"
+                  data-path="{escape_text(latest_ver['relative_path'])}"
+                  data-triggers="{escape_text(trigger_text)}"
+                  data-creator="{escape_text(group.get('creator', ''))}"
+                  data-base-model="{escape_text(latest_ver.get('base_model', ''))}"
+                  data-description="{escape_text(desc_clean)}"
+                  data-tags="{escape_text(json.dumps(group.get('tags', [])))}"
+                  data-official-triggers="{escape_text(json.dumps(trigger_words))}"
+                  data-versions="{escape_text(versions_json)}"
+                  data-favorite="false">
             <div class="preview">
                 {image_html}
                 <button class="btn-favorite" aria-label="Toggle favorite" type="button">
@@ -463,6 +552,8 @@ def build_gallery_card(entry: dict, output_path: Path) -> str:
             <div class="content">
                 <h2>{escape_text(name)}</h2>
                 <p class="folder">{escape_text(folder_name)}</p>
+                
+                {version_selector_html}
                 
                 <p class="label">Trigger words</p>
                 {trigger_section_html}
@@ -494,9 +585,76 @@ def build_gallery_card(entry: dict, output_path: Path) -> str:
     """
 
 
+def group_entries(entries: list[dict]) -> list[dict]:
+    grouped = {}
+    for entry in entries:
+        model_id = entry.get("model_id") or ""
+        folder_name = entry.get("folder_name", "")
+        
+        if model_id:
+            group_key = f"model_{model_id}"
+        elif folder_name and folder_name.lower() != "lora":
+            group_key = f"folder_{folder_name.lower()}"
+        else:
+            group_key = f"file_{entry['file_stem'].lower()}"
+            
+        if group_key not in grouped:
+            grouped[group_key] = {
+                "name": entry.get("model_name") or entry.get("name") or folder_name or entry.get("file_stem"),
+                "folder_name": folder_name,
+                "creator": entry.get("creator", ""),
+                "tags": set(entry.get("tags", [])),
+                "versions": []
+            }
+            
+        version_name = entry.get("version_name")
+        if not version_name:
+            version_name = entry.get("file_stem")
+            
+        grouped[group_key]["versions"].append({
+            "filename": entry.get("filename"),
+            "file_stem": entry.get("file_stem"),
+            "version_name": version_name,
+            "version_id": entry.get("version_id"),
+            "preview_image": entry.get("preview_image"),
+            "trigger_words": entry.get("trigger_words", []),
+            "trigger_groups": entry.get("trigger_groups", []),
+            "base_model": entry.get("base_model", ""),
+            "description": entry.get("description", ""),
+            "sha256": entry.get("sha256", ""),
+            "relative_path": entry.get("relative_path", ""),
+            "mtime": entry.get("mtime", 0)
+        })
+        
+        if entry.get("creator") and not grouped[group_key]["creator"]:
+            grouped[group_key]["creator"] = entry["creator"]
+        grouped[group_key]["tags"].update(entry.get("tags", []))
+        
+    grouped_list = []
+    for g in grouped.values():
+        g["tags"] = sorted(list(g["tags"]))
+        def get_version_sort_key(x):
+            v_id = x.get("version_id")
+            try:
+                v_num = int(v_id) if v_id is not None else 0
+            except (ValueError, TypeError):
+                v_num = 0
+            try:
+                mtime_val = float(x.get("mtime", 0))
+            except (ValueError, TypeError):
+                mtime_val = 0.0
+            return (v_num, mtime_val)
+        g["versions"].sort(key=get_version_sort_key, reverse=True)
+        grouped_list.append(g)
+        
+    grouped_list.sort(key=lambda x: x["name"].lower())
+    return grouped_list
+
+
 # Build a complete standalone HTML gallery document.
 def build_gallery_html(entries: list[dict], output_path: Path) -> str:
-    cards = "\n".join(build_gallery_card(entry, output_path) for entry in entries)
+    grouped = group_entries(entries)
+    cards = "\n".join(build_gallery_card(group, output_path) for group in grouped)
 
     return f"""<!doctype html>
 <html lang="en">
@@ -965,6 +1123,86 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             text-overflow: ellipsis;
             white-space: nowrap;
         }}
+
+        .version-selector-container {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 12px 0;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+
+        .version-label {{
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }}
+
+        .version-select {{
+            flex: 1;
+            min-width: 0;
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 500;
+            outline: none;
+            cursor: pointer;
+            padding-right: 20px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right center;
+            background-size: 14px;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            overflow: hidden;
+        }}
+        
+        .version-select option {{
+            background: var(--panel);
+            color: var(--text);
+        }}
+
+        .btn-delete-version {{
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition);
+            color: #ef4444;
+            padding: 0;
+            flex-shrink: 0;
+        }}
+
+        .btn-delete-version:hover, .btn-delete-version:focus-visible {{
+            background: #ef4444;
+            color: #ffffff;
+            border-color: #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+        }}
+
+        .btn-delete-version svg {{
+            width: 15px;
+            height: 15px;
+        }}
+
 
         .label {{
             margin: 12px 0 4px 0;
@@ -2372,6 +2610,160 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }}, 1500);
             }}).catch(err => {{
                 console.error("Clipboard copy failed:", err);
+            }});
+        }});
+
+        // Toast notifications utility
+        function showToast(message) {{
+            let toast = document.getElementById("gallery-toast");
+            if (!toast) {{
+                toast = document.createElement("div");
+                toast.id = "gallery-toast";
+                toast.style.cssText = `
+                    position: fixed;
+                    bottom: 24px;
+                    right: 24px;
+                    background: #10b981;
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+                    z-index: 9999;
+                    transition: opacity 0.3s ease, transform 0.3s ease;
+                    transform: translateY(100px);
+                    opacity: 0;
+                `;
+                document.body.appendChild(toast);
+            }}
+            toast.textContent = message;
+            toast.style.opacity = "1";
+            toast.style.transform = "translateY(0)";
+            setTimeout(() => {{
+                toast.style.opacity = "0";
+                toast.style.transform = "translateY(100px)";
+            }}, 3000);
+        }}
+
+        // Version Selector Change Handler (Event Delegation)
+        grid.addEventListener("change", (e) => {{
+            const select = e.target.closest(".version-select");
+            if (!select) return;
+            
+            const card = select.closest(".card");
+            if (!card) return;
+            
+            const versions = JSON.parse(card.dataset.versions || "[]");
+            const selectedVer = versions.find(v => v.file_stem === select.value);
+            if (!selectedVer) return;
+            
+            // Update Card dataset attributes
+            card.dataset.filename = selectedVer.filename;
+            card.dataset.stem = selectedVer.file_stem;
+            card.dataset.mtime = selectedVer.mtime;
+            card.dataset.hash = selectedVer.sha256;
+            card.dataset.path = selectedVer.relative_path;
+            card.dataset.triggers = selectedVer.trigger_words.join(", ");
+            card.dataset.baseModel = selectedVer.base_model;
+            card.dataset.description = selectedVer.description;
+            card.dataset.officialTriggers = JSON.stringify(selectedVer.trigger_words);
+            
+            // Update Image Preview
+            const previewContainer = card.querySelector(".preview");
+            if (selectedVer.preview_image) {{
+                let imgEl = previewContainer.querySelector("img");
+                if (!imgEl) {{
+                    const missingDiv = previewContainer.querySelector(".missing-preview");
+                    if (missingDiv) missingDiv.remove();
+                    imgEl = document.createElement("img");
+                    imgEl.className = "card-preview-image";
+                    imgEl.loading = "lazy";
+                    previewContainer.insertBefore(imgEl, previewContainer.firstChild);
+                }}
+                imgEl.src = selectedVer.preview_image;
+                imgEl.alt = card.dataset.name;
+            }} else {{
+                const imgEl = previewContainer.querySelector("img");
+                if (imgEl) imgEl.remove();
+                
+                let missingDiv = previewContainer.querySelector(".missing-preview");
+                if (!missingDiv) {{
+                    missingDiv = document.createElement("div");
+                    missingDiv.className = "missing-preview";
+                    missingDiv.innerHTML = `
+                        <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                        <span>No Preview Available</span>
+                    `;
+                    previewContainer.insertBefore(missingDiv, previewContainer.firstChild);
+                }}
+            }}
+            
+            // Update Trigger Words display
+            const triggerContainer = card.querySelector(".trigger-groups-container");
+            if (triggerContainer) {{
+                triggerContainer.innerHTML = selectedVer.trigger_groups_html || '<p class="triggers">None found</p>';
+            }}
+            
+            // Update Description display
+            const descEl = card.querySelector(".description");
+            if (descEl) {{
+                descEl.textContent = selectedVer.description || "No description available.";
+            }}
+        }});
+
+        // Delete Version Click Handler (Event Delegation)
+        grid.addEventListener("click", (e) => {{
+            const btn = e.target.closest(".btn-delete-version");
+            if (!btn) return;
+            
+            const card = btn.closest(".card");
+            if (!card) return;
+            
+            const select = card.querySelector(".version-select");
+            if (!select) return;
+            
+            const versions = JSON.parse(card.dataset.versions || "[]");
+            const selectedVer = versions.find(v => v.file_stem === select.value);
+            if (!selectedVer) return;
+            
+            const confirmMsg = `Are you sure you want to delete the model version '${{selectedVer.version_name || selectedVer.file_stem}}'?\n\nThis will permanently delete the model file:\n${{selectedVer.filename}}\n\nas well as its associated previews and metadata.`;
+            if (!confirm(confirmMsg)) return;
+            
+            fetch('/api/delete_model_version', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json'
+                }},
+                body: JSON.stringify({{ relative_path: selectedVer.relative_path }})
+            }})
+            .then(res => {{
+                if (!res.ok) throw new Error("Delete failed on server.");
+                return res.json();
+            }})
+            .then(data => {{
+                let remainingVersions = versions.filter(v => v.file_stem !== selectedVer.file_stem);
+                if (remainingVersions.length === 0) {{
+                    card.remove();
+                    const idx = cards.indexOf(card);
+                    if (idx > -1) cards.splice(idx, 1);
+                    updateFilter();
+                    showToast("Model deleted successfully.");
+                }} else {{
+                    card.dataset.versions = JSON.stringify(remainingVersions);
+                    select.innerHTML = remainingVersions.map(v => `<option value="${{v.file_stem}}">${{v.version_name || v.file_stem}}</option>`).join("");
+                    select.value = remainingVersions[0].file_stem;
+                    select.dispatchEvent(new Event("change"));
+                    showToast("Version deleted successfully.");
+                }}
+            }})
+            .catch(err => {{
+                console.error("Deletion failed:", err);
+                alert("Failed to delete model version: " + err.message);
             }});
         }});
 

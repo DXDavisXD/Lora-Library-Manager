@@ -139,14 +139,26 @@ def move_without_overwrite(source_path: Path, target_path: Path) -> bool:
     if is_dry_run():
         log_operation(f"[DRY RUN] Would move: {source_path} -> {target_path}")
         if is_verbose():
-            print(f"[DRY RUN] Would move: {source_path.name} -> {target_path}")
+            try:
+                print(f"[DRY RUN] Would move: {source_path.name} -> {target_path}")
+            except UnicodeEncodeError:
+                try:
+                    print(f"[DRY RUN] Would move: {source_path.name} -> {target_path.as_posix().encode('ascii', 'replace').decode('ascii')}")
+                except Exception:
+                    pass
         return True
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     move(str(source_path), str(target_path))
     log_operation(f"Moved: {source_path} -> {target_path}")
     if is_verbose():
-        print(f"Moved: {source_path.name} -> {target_path}")
+        try:
+            print(f"Moved: {source_path.name} -> {target_path}")
+        except UnicodeEncodeError:
+            try:
+                print(f"Moved: {source_path.name} -> {target_path.as_posix().encode('ascii', 'replace').decode('ascii')}")
+            except Exception:
+                pass
     return True
 
 
@@ -166,6 +178,29 @@ def organize_lora_file(lora_file: Path, library_dir: Path) -> str:
     for sidecar_file in sidecar_files:
         sidecar_target = target_folder / sidecar_file.name
         move_without_overwrite(sidecar_file, sidecar_target)
+
+    # Clean up parent directory if no other model files remain in it
+    parent_dir = lora_file.parent
+    if parent_dir.resolve() != library_dir.resolve() and parent_dir.is_dir():
+        has_remaining_models = False
+        for ext in LORA_EXTENSIONS:
+            for f in parent_dir.glob(f"*{ext}"):
+                if is_lora_file(f):
+                    has_remaining_models = True
+                    break
+            if has_remaining_models:
+                break
+                
+        if not has_remaining_models:
+            try:
+                # Delete any remaining non-model files (like metadata.json)
+                for extra in list(parent_dir.glob("*")):
+                    if extra.is_file():
+                        extra.unlink()
+                parent_dir.rmdir()
+                log_operation(f"Removed empty folder after organizing: {parent_dir}")
+            except OSError as e:
+                log_operation(f"Error cleaning up parent folder {parent_dir}: {e}")
 
     return "organized"
 
