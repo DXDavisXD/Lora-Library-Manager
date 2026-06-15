@@ -499,6 +499,7 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
             "file_stem": ver["file_stem"],
             "version_name": ver["version_name"],
             "version_id": ver["version_id"],
+            "model_id": ver.get("model_id"),
             "preview_image": rel_preview,
             "trigger_words": v_trigger_words,
             "trigger_groups_html": v_groups_html,
@@ -616,6 +617,7 @@ def group_entries(entries: list[dict]) -> list[dict]:
             "file_stem": entry.get("file_stem"),
             "version_name": version_name,
             "version_id": entry.get("version_id"),
+            "model_id": entry.get("model_id"),
             "preview_image": entry.get("preview_image"),
             "trigger_words": entry.get("trigger_words", []),
             "trigger_groups": entry.get("trigger_groups", []),
@@ -1656,6 +1658,30 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-color: rgba(255, 255, 255, 0.2);
         }}
 
+        .btn-action-civitai {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: var(--transition);
+            outline: none;
+            text-decoration: none;
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+        }}
+
+        .btn-action-civitai:hover, .btn-action-civitai:focus-visible {{
+            background: rgba(30, 41, 59, 0.8);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: white;
+        }}
+
         @media (max-width: 1024px) {{
             .header-container {{
                 flex-direction: column;
@@ -2371,6 +2397,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     <div class="modal-actions-bar">
                         <button id="modal-btn-copy-tag" class="btn-action-primary">Copy Tag</button>
                         <button id="modal-btn-add-prompt" class="btn-action-secondary">Add to Prompt</button>
+                        <a id="modal-btn-civitai" class="btn-action-civitai" target="_blank" rel="noopener noreferrer">View on CivitAI</a>
                     </div>
                 </div>
                 <!-- Right Side: Edit Panel -->
@@ -3086,6 +3113,26 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             document.getElementById("modal-path").textContent = path;
             document.getElementById("modal-description").innerHTML = description;
             document.getElementById("modal-notes").value = notes;
+
+            // Populate CivitAI link
+            const select = card.querySelector(".version-select");
+            const versions = JSON.parse(card.dataset.versions || "[]");
+            const selectedVer = select ? versions.find(v => v.file_stem === select.value) : versions[0];
+            const civitaiLink = document.getElementById("modal-btn-civitai");
+            if (civitaiLink) {{
+                const modelId = selectedVer ? selectedVer.model_id : null;
+                const versionId = selectedVer ? selectedVer.version_id : null;
+                if (modelId) {{
+                    civitaiLink.style.display = "inline-flex";
+                    let url = `https://civitai.red/models/${{modelId}}`;
+                    if (versionId) {{
+                        url += `?modelVersionId=${{versionId}}`;
+                    }}
+                    civitaiLink.href = url;
+                }} else {{
+                    civitaiLink.style.display = "none";
+                }}
+            }}
 
             // Image preview
             const imgEl = document.getElementById("modal-image");
