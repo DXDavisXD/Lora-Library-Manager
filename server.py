@@ -41,6 +41,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/get_user_data":
             relative_path = query.get("relative_path", [None])[0]
             self.handle_get_user_data(relative_path)
+        elif path == "/api/collections":
+            self.handle_get_collections()
         else:
             # Fall back to serving static files
             super().do_GET()
@@ -50,6 +52,12 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_save_user_data()
         elif self.path == "/api/delete_model_version":
             self.handle_delete_model_version()
+        elif self.path == "/api/collections":
+            self.handle_add_collection()
+        elif self.path == "/api/delete_collection":
+            self.handle_delete_collection()
+        elif self.path == "/api/open_folder":
+            self.handle_open_folder()
         else:
             self.send_error_response(404, "Not Found")
 
@@ -94,6 +102,208 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_success_response(summary)
         except Exception as e:
             self.send_error_response(500, f"Error gathering user data summary: {e}")
+
+    def load_collections_list(self) -> list:
+        collections_file = self.lora_root / "collections.json"
+        if collections_file.exists():
+            try:
+                with collections_file.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        return data
+            except Exception as e:
+                log_operation(f"Error loading collections.json: {e}")
+        
+        # Fallback: scan existing user_data.json files recursively to build initial list
+        log_operation("collections.json not found or invalid. Scanning library user_data.json files...")
+        collections_set = set()
+        for path in self.lora_root.rglob("user_data.json"):
+            try:
+                with path.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+                colls = data.get("collections", [])
+                for c in colls:
+                    if c and c.strip():
+                        c_clean = c.strip()
+                        if c_clean.lower() == "favorites":
+                            c_clean = "Favorites"
+                        elif c_clean.lower() == "library":
+                            c_clean = "Library"
+                        
+                        if c_clean not in ("Library", "Favorites"):
+                            # Case-insensitive deduplication: keep first casing encountered
+                            exists = False
+                            for existing in collections_set:
+                                if existing.lower() == c_clean.lower():
+                                    exists = True
+                                    break
+                            if not exists:
+                                collections_set.add(c_clean)
+            except Exception:
+                continue
+        
+        # Save to collections.json
+        collections_list = sorted(list(collections_set))
+        self.save_collections_list(collections_list)
+        return collections_list
+
+    def save_collections_list(self, collections_list: list):
+        collections_file = self.lora_root / "collections.json"
+        try:
+            with collections_file.open("w", encoding="utf-8") as f:
+                json.dump(collections_list, f, indent=2, ensure_ascii=False)
+            log_operation(f"Saved collections.json with {len(collections_list)} entries.")
+        except Exception as e:
+            log_operation(f"Error saving collections.json: {e}")
+
+    def handle_get_collections(self):
+        try:
+            collections = self.load_collections_list()
+            self.send_success_response({"collections": collections})
+        except Exception as e:
+            self.send_error_response(500, f"Error loading collections: {e}")
+
+    def handle_add_collection(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+            new_name = data.get("name", "").strip()
+            
+            if not new_name:
+                self.send_error_response(400, "Collection name cannot be empty")
+                return
+                
+            # Normalize Library & Favorites virtual collections
+            if new_name.lower() == "favorites":
+                new_name = "Favorites"
+            elif new_name.lower() == "library":
+                new_name = "Library"
+
+            collections = self.load_collections_list()
+            
+            # Case-insensitive uniqueness check
+            exists = False
+            for c in collections:
+                if c.lower() == new_name.lower():
+                    exists = True
+                    break
+                    
+            if not exists and new_name not in ("Library", "Favorites"):
+                collections.append(new_name)
+                # Keep it sorted
+                collections.sort(key=lambda x: x.lower())
+                self.save_collections_list(collections)
+                
+            self.send_success_response({"collections": collections})
+        except Exception as e:
+            self.send_error_response(500, f"Error adding collection: {e}")
+
+    def handle_delete_collection(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+            target_name = data.get("name", "").strip()
+            
+            if not target_name:
+                self.send_error_response(400, "Collection name cannot be empty")
+                return
+                
+            collections = self.load_collections_list()
+            updated_collections = [c for c in collections if c.lower() != target_name.lower()]
+            self.save_collections_list(updated_collections)
+            
+            # Now update all user_data.json files recursively
+            for path in self.lora_root.rglob("user_data.json"):
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        user_data = json.load(f)
+                    
+                    colls = user_data.get("collections", [])
+                    has_target = False
+                    for c in colls:
+                        if c.lower() == target_name.lower():
+                            has_target = True
+                            break
+                            
+                    if has_target:
+                        new_colls = [c for c in colls if c.lower() != target_name.lower()]
+                        user_data["collections"] = new_colls
+                        user_data["last_modified"] = datetime.now().isoformat() + "Z"
+                        
+                        # Check if it has any other content
+                        personal_triggers = user_data.get("personal_trigger_words", [])
+                        notes = user_data.get("notes", "")
+                        rating = user_data.get("rating", 0)
+                        
+                        has_content = bool(personal_triggers or notes.strip() or rating > 0 or new_colls)
+                        if not has_content:
+                            try:
+                                path.unlink()
+                                log_operation(f"Deleted empty user data sidecar after deleting collection: {path}")
+                            except OSError as e:
+                                log_operation(f"Error deleting user data sidecar {path}: {e}")
+                        else:
+                            with path.open("w", encoding="utf-8") as f:
+                                json.dump(user_data, f, indent=2)
+                            log_operation(f"Updated user data sidecar (removed collection): {path}")
+                except Exception as e:
+                    log_operation(f"Error cleaning collection from sidecar {path}: {e}")
+                    continue
+            
+            # Trigger background refresh of gallery HTML to reflect the updated metadata
+            import threading
+            def bg_refresh():
+                try:
+                    from main import refresh_gallery
+                    refresh_gallery(self.lora_root)
+                except Exception as ex:
+                    log_operation(f"Error refreshing gallery HTML after deleting collection in thread: {ex}")
+            threading.Thread(target=bg_refresh, daemon=True).start()
+            
+            self.send_success_response({"collections": updated_collections})
+        except json.JSONDecodeError:
+            self.send_error_response(400, "Invalid JSON payload")
+        except Exception as e:
+            self.send_error_response(500, f"Server Error: {e}")
+
+    def handle_open_folder(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+            relative_path = data.get("relative_path")
+            
+            if not relative_path:
+                self.send_error_response(400, "Missing relative_path")
+                return
+                
+            target_model_file = (self.lora_root / relative_path).resolve()
+            if not target_model_file.is_relative_to(self.lora_root.resolve()):
+                self.send_error_response(403, "Access Denied: Path traversal detected")
+                return
+                
+            parent_folder = target_model_file.parent
+            if parent_folder.exists() and parent_folder.is_dir():
+                if sys.platform == "win32":
+                    os.startfile(parent_folder)
+                    log_operation(f"Opened folder in explorer: {parent_folder}")
+                    self.send_success_response({"status": "success", "message": "Folder opened"})
+                else:
+                    import subprocess
+                    if sys.platform == "darwin":
+                        subprocess.run(["open", str(parent_folder)])
+                    else:
+                        subprocess.run(["xdg-open", str(parent_folder)])
+                    log_operation(f"Opened folder: {parent_folder}")
+                    self.send_success_response({"status": "success", "message": "Folder opened"})
+            else:
+                self.send_error_response(404, f"Directory not found: {parent_folder}")
+        except json.JSONDecodeError:
+            self.send_error_response(400, "Invalid JSON payload")
+        except Exception as e:
+            self.send_error_response(500, f"Server Error: {e}")
 
     def handle_get_user_data(self, relative_path):
         if not relative_path:
@@ -195,7 +405,41 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             existing_data["personal_trigger_words"] = personal_triggers
             existing_data["notes"] = notes
             existing_data["rating"] = rating
-            existing_data["collections"] = collections
+
+            # Normalize collections and auto-update collections.json
+            normalized_collections = []
+            current_globals = self.load_collections_list()
+            updated = False
+            for c in collections:
+                c_clean = c.strip()
+                if not c_clean:
+                    continue
+                
+                # Normalize virtual collections Library & Favorites
+                if c_clean.lower() == "favorites":
+                    c_clean = "Favorites"
+                elif c_clean.lower() == "library":
+                    c_clean = "Library"
+                    
+                exists = False
+                matched_name = c_clean
+                for g in current_globals:
+                    if g.lower() == c_clean.lower():
+                        exists = True
+                        matched_name = g
+                        break
+                        
+                normalized_collections.append(matched_name)
+                
+                if not exists and c_clean not in ("Library", "Favorites"):
+                    current_globals.append(c_clean)
+                    updated = True
+                    
+            if updated:
+                current_globals.sort(key=lambda x: x.lower())
+                self.save_collections_list(current_globals)
+
+            existing_data["collections"] = normalized_collections
 
             # Save the file
             target_folder.mkdir(parents=True, exist_ok=True)
@@ -203,6 +447,7 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 json.dump(existing_data, f, indent=2)
                 
             log_operation(f"Saved user data sidecar: {user_data_path}")
+                    
             self.send_success_response({
                 "status": "success",
                 "message": "User data saved successfully",
