@@ -1402,20 +1402,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-direction: column;
             gap: 8px;
             margin-bottom: 12px;
-            max-height: 160px;
+            max-height: 280px;
             overflow-y: auto;
             padding-right: 4px;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
-        }}
-
-        .trigger-groups-container::-webkit-scrollbar {{
-            width: 4px;
-        }}
-
-        .trigger-groups-container::-webkit-scrollbar-thumb {{
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 2px;
         }}
 
         .trigger-group {{
@@ -1535,14 +1524,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             overflow-y: auto;
             border-top: 1px solid var(--border);
             background: rgba(0, 0, 0, 0.15);
-        }}
-
-        .trigger-list::-webkit-scrollbar {{
-            width: 4px;
-        }}
-        .trigger-list::-webkit-scrollbar-thumb {{
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 2px;
         }}
 
         .trigger-list li {{
@@ -1919,14 +1900,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         /* Close Button */
         .modal-close {{
             position: absolute;
-            top: 16px;
-            right: 16px;
+            top: 12px;
+            right: 12px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.05);
             color: var(--text-muted);
-            font-size: 24px;
-            width: 36px;
-            height: 36px;
+            width: 30px;
+            height: 30px;
             border-radius: 50%;
             cursor: pointer;
             display: flex;
@@ -1935,6 +1915,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             z-index: 10;
             transition: var(--transition);
             outline: none;
+        }}
+
+        .modal-close svg {{
+            width: 12px;
+            height: 12px;
+            display: block;
+            stroke-width: 2.5;
         }}
 
         .modal-close:hover, .modal-close:focus {{
@@ -1954,13 +1941,52 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         /* Left side (Static details, preview) */
         .modal-left {{
             width: 40%;
-            padding: 24px;
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            gap: 16px;
             background: rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            height: 100%;
+        }}
+
+        .modal-left-scrollable {{
+            flex: 1;
             overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            transition: opacity 0.18s ease;
+        }}
+
+        /* Version switch fade transition */
+        .modal-version-transitioning {{
+            opacity: 0 !important;
+            pointer-events: none;
+        }}
+
+        .modal-right,
+        .modal-middle {{
+            transition: opacity 0.18s ease;
+        }}
+
+        .modal-left-actions {{
+            flex-shrink: 0;
+            padding: 20px 24px;
+            border-top: 1px solid var(--border);
+            background: rgba(17, 19, 28, 0.6);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }}
+
+        .modal-left-actions button, .modal-left-actions a {{
+            flex: 1 1 auto;
+            min-width: 100px;
+            margin: 0;
+            text-align: center;
+            white-space: nowrap;
         }}
 
         .modal-preview-container {{
@@ -1982,41 +2008,99 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             width: auto;
             display: block;
             object-fit: contain;
+        }}        /* Auto-Hiding Scrollbar Overlay styles for specific components */
+        #modal-title,
+        .modal-left-scrollable,
+        .triggers-list-read,
+        .triggers-list-edit,
+        .modal-popup-collections-list {{
+            scrollbar-width: thin;
+            scrollbar-color: transparent transparent;
+            transition: scrollbar-color 0.3s ease;
         }}
 
-        /* Webkit scrollbar customizations for modal elements */
-        .modal-left::-webkit-scrollbar,
-        .modal-right::-webkit-scrollbar,
-        .modal-description-text::-webkit-scrollbar,
+        #modal-title.is-scrolling,
+        .modal-left-scrollable.is-scrolling,
+        .triggers-list-read.is-scrolling,
+        .triggers-list-edit.is-scrolling,
+        .modal-popup-collections-list.is-scrolling {{
+            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }}
+
+        #modal-title::-webkit-scrollbar,
+        .modal-left-scrollable::-webkit-scrollbar,
         .triggers-list-read::-webkit-scrollbar,
         .triggers-list-edit::-webkit-scrollbar,
-        .collections-checkbox-list::-webkit-scrollbar {{
+        .modal-popup-collections-list::-webkit-scrollbar {{
             width: 6px;
             height: 6px;
         }}
-        .modal-left::-webkit-scrollbar-track,
-        .modal-right::-webkit-scrollbar-track,
-        .modal-description-text::-webkit-scrollbar-track,
+
+        #modal-title::-webkit-scrollbar-track,
+        .modal-left-scrollable::-webkit-scrollbar-track,
         .triggers-list-read::-webkit-scrollbar-track,
         .triggers-list-edit::-webkit-scrollbar-track,
-        .collections-checkbox-list::-webkit-scrollbar-track {{
+        .modal-popup-collections-list::-webkit-scrollbar-track {{
             background: transparent;
         }}
-        .modal-left::-webkit-scrollbar-thumb,
-        .modal-right::-webkit-scrollbar-thumb,
-        .modal-description-text::-webkit-scrollbar-thumb,
+        
+        #modal-title::-webkit-scrollbar-thumb,
+        .modal-left-scrollable::-webkit-scrollbar-thumb,
         .triggers-list-read::-webkit-scrollbar-thumb,
         .triggers-list-edit::-webkit-scrollbar-thumb,
-        .collections-checkbox-list::-webkit-scrollbar-thumb {{
-            background: rgba(255, 255, 255, 0.12);
+        .modal-popup-collections-list::-webkit-scrollbar-thumb {{
+            background: transparent;
+            border-radius: 3px;
+            transition: background 0.3s ease;
+        }}
+        
+        #modal-title.is-scrolling::-webkit-scrollbar-thumb,
+        .modal-left-scrollable.is-scrolling::-webkit-scrollbar-thumb,
+        .triggers-list-read.is-scrolling::-webkit-scrollbar-thumb,
+        .triggers-list-edit.is-scrolling::-webkit-scrollbar-thumb,
+        .modal-popup-collections-list.is-scrolling::-webkit-scrollbar-thumb {{
+            background: rgba(255, 255, 255, 0.15);
+        }}
+        
+        #modal-title.is-scrolling::-webkit-scrollbar-thumb:hover,
+        .modal-left-scrollable.is-scrolling::-webkit-scrollbar-thumb:hover,
+        .triggers-list-read.is-scrolling::-webkit-scrollbar-thumb:hover,
+        .triggers-list-edit.is-scrolling::-webkit-scrollbar-thumb:hover,
+        .modal-popup-collections-list.is-scrolling::-webkit-scrollbar-thumb:hover {{
+            background: rgba(255, 255, 255, 0.25);
+        }}
+
+        /* Persistent Themed Scrollbars for Triggers & Resizable Description */
+        .modal-description-text,
+        .trigger-groups-container,
+        .trigger-list {{
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }}
+
+        .modal-description-text::-webkit-scrollbar,
+        .trigger-groups-container::-webkit-scrollbar,
+        .trigger-list::-webkit-scrollbar {{
+            width: 6px;
+            height: 6px;
+        }}
+
+        .modal-description-text::-webkit-scrollbar-track,
+        .trigger-groups-container::-webkit-scrollbar-track,
+        .trigger-list::-webkit-scrollbar-track {{
+            background: transparent;
+        }}
+
+        .modal-description-text::-webkit-scrollbar-thumb,
+        .trigger-groups-container::-webkit-scrollbar-thumb,
+        .trigger-list::-webkit-scrollbar-thumb {{
+            background: rgba(255, 255, 255, 0.15);
             border-radius: 3px;
         }}
-        .modal-left::-webkit-scrollbar-thumb:hover,
-        .modal-right::-webkit-scrollbar-thumb:hover,
+
         .modal-description-text::-webkit-scrollbar-thumb:hover,
-        .triggers-list-read::-webkit-scrollbar-thumb:hover,
-        .triggers-list-edit::-webkit-scrollbar-thumb:hover,
-        .collections-checkbox-list::-webkit-scrollbar-thumb:hover {{
+        .trigger-groups-container::-webkit-scrollbar-thumb:hover,
+        .trigger-list::-webkit-scrollbar-thumb:hover {{
             background: rgba(255, 255, 255, 0.25);
         }}
 
@@ -2131,8 +2215,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             padding: 24px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
-            overflow-y: auto;
+            gap: 16px;
+            overflow: hidden; /* Column itself is not scrollable */
+            height: 100%;
+            box-sizing: border-box;
         }}
 
         .modal-right h2 {{
@@ -2162,15 +2248,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         .modal-description-text {{
             font-size: 13px;
             color: var(--text-muted);
-            max-height: 120px;
-            overflow-y: auto;
             background: rgba(255, 255, 255, 0.01);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 10px 14px;
             line-height: 1.6;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+            word-break: break-word;
         }}
 
         /* Tags Container */
@@ -2179,14 +2262,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-wrap: wrap;
             gap: 6px;
         }}
-
         .modal-tag {{
             background: rgba(99, 102, 241, 0.1);
             border: 1px solid rgba(99, 102, 241, 0.2);
             color: #a5b4fc;
             font-size: 11px;
             padding: 2px 8px;
-            border-radius: 4px;
+            border-radius: 6px;
             font-weight: 600;
         }}
 
@@ -2241,81 +2323,51 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
         }}
 
-        /* Collections Checkbox List styling */
-        .collections-checkbox-list {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            max-height: 120px;
-            overflow-y: auto;
-            background: rgba(0, 0, 0, 0.1);
-            padding: 8px;
+        /* Collection chips styling */
+        .collection-chip-modal {{
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #a5b4fc;
+            font-size: 12px;
+            padding: 4px 10px;
             border-radius: 6px;
-            border: 1px solid var(--border);
-            width: 100%;
-        }}
-
-        .collection-checkbox-label {{
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 11px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border);
-            padding: 4px 10px;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: var(--transition);
-            user-select: none;
-            color: var(--text-muted);
-            font-weight: 500;
+            font-weight: 600;
+            cursor: default;
         }}
 
-        .collection-checkbox-label:hover {{
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.2);
-            color: var(--text);
-        }}
-
-        .collection-checkbox-label input[type="checkbox"] {{
-            margin: 0;
-            cursor: pointer;
-            accent-color: var(--accent);
-        }}
-
-        .collection-checkbox-label.active {{
-            background: var(--accent-alpha);
-            border-color: rgba(99, 102, 241, 0.4);
-            color: #a5b4fc;
-        }}
-
-        .collection-checkbox-label .btn-delete-collection-global {{
-            background: none;
+        .collection-chip-modal .btn-remove-chip {{
+            background: transparent;
             border: none;
-            color: var(--text-muted);
+            color: #a5b4fc;
             cursor: pointer;
-            font-size: 13px;
-            padding: 0 2px;
-            margin-left: 4px;
+            font-weight: bold;
+            font-size: 12px;
+            padding: 0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            line-height: 1;
-            transition: color 0.15s ease;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            transition: var(--transition);
         }}
-        
-        .collection-checkbox-label .btn-delete-collection-global:hover {{
+
+        .collection-chip-modal .btn-remove-chip:hover {{
+            background: rgba(239, 68, 68, 0.2);
             color: #ef4444;
         }}
 
         /* Input forms */
-        .add-collection-form, .add-trigger-form {{
+        .add-trigger-form {{
             display: flex;
             gap: 8px;
             margin-top: 4px;
         }}
 
-        .add-collection-form input, .add-trigger-form input {{
+        .add-trigger-form input {{
             flex: 1;
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
@@ -2326,7 +2378,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             outline: none;
         }}
 
-        .add-collection-form input:focus, .add-trigger-form input:focus {{
+        .add-trigger-form input:focus {{
             border-color: var(--accent);
         }}
 
@@ -2366,7 +2418,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             color: var(--text-muted);
             font-size: 11px;
             padding: 2px 6px;
-            border-radius: 4px;
+            border-radius: 6px;
             font-family: monospace;
         }}
 
@@ -2389,7 +2441,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             color: #34d399;
             font-size: 11px;
             padding: 4px 10px;
-            border-radius: 20px;
+            border-radius: 6px;
             font-family: monospace;
             display: inline-flex;
             align-items: center;
@@ -2416,16 +2468,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             gap: 16px;
         }}
 
-        /* Save / Copy Action Bars */
-        .modal-actions-bar {{
-            display: flex;
-            gap: 8px;
-        }}
-
-        .modal-actions-bar button {{
-            flex: 1;
-        }}
-
         .modal-save-bar {{
             display: flex;
             gap: 12px;
@@ -2433,8 +2475,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             padding-top: 16px;
             margin-top: auto;
         }}
-
-
 
         .modal-save-bar .btn-secondary {{
             background: rgba(255, 255, 255, 0.05);
@@ -2451,6 +2491,38 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .modal-save-bar .btn-secondary:hover {{
             background: rgba(255, 255, 255, 0.08);
+        }}
+
+        /* 3-Column Portrait Layout Overrides */
+        .modal-middle {{
+            width: 32%;
+            min-width: 280px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow: hidden; /* Changed from overflow-y: auto */
+            padding: 24px;
+            background: rgba(0, 0, 0, 0.05);
+            box-sizing: border-box;
+            height: 100%;
+        }}
+
+        .modal-body.three-column .modal-left {{
+            width: 30%;
+            min-width: 280px;
+            max-width: 450px;
+        }}
+
+        .modal-body.three-column .modal-right {{
+            width: 38%;
+            min-width: 320px;
+        }}
+
+        .modal-section-group {{
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }}
 
         /* Action button overrides inside modal */
@@ -2487,22 +2559,143 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             background: var(--accent-alpha);
         }}
 
+        /* Empty states & Placeholders */
+        .empty-placeholder {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.01);
+            color: var(--text-muted);
+            font-size: 13px;
+            text-align: center;
+            box-sizing: border-box;
+        }}
+
+        .popup-section-header {{
+            padding: 6px 12px 2px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent);
+            opacity: 0.85;
+        }}
+
+        .popup-divider {{
+            height: 1px;
+            background: var(--border);
+            margin: 4px 0;
+        }}
+
+        .popup-footer {{
+            padding: 8px 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            background: rgba(0, 0, 0, 0.25);
+        }}
+
+        .popup-item-check {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 14px;
+        }}
+
+        .btn-delete-collection-popup {{
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }}
+
+        .btn-delete-collection-popup:hover {{
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }}
+
+        /* 3-Column Portrait Modal Layout Overrides */
+        .modal-body.three-column .modal-left-actions {{
+            flex-direction: column;
+            align-items: stretch;
+            gap: 10px;
+            padding: 16px 20px;
+        }}
+
+        .modal-body.three-column .modal-left-actions button,
+        .modal-body.three-column .modal-left-actions a {{
+            width: 100%;
+            flex: none;
+            box-sizing: border-box;
+        }}
+
+        .modal-body.three-column .modal-section h3 {{
+            text-align: center;
+        }}
+
+        .modal-body.three-column .rating-stars {{
+            margin: 0 auto;
+        }}
+
+        .modal-body.three-column #modal-collections-chips-list {{
+            justify-content: center;
+        }}
+
+        .modal-body.three-column .grid-2-col {{
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }}
+
+        .modal-body.three-column .modal-left-scrollable {{
+            padding: 16px;
+            gap: 12px;
+        }}
+
+        .modal-body.three-column .collections-popup {{
+            max-width: none;
+        }}
+
+        .modal-left-scrollable > *,
+        .modal-middle > *,
+        .modal-right > * {{
+            flex-shrink: 0;
+        }}
+
         @media (max-width: 768px) {{
             .modal-body {{
                 flex-direction: column;
                 overflow-y: auto;
             }}
             .modal-left {{
-                width: 100%;
+                width: 100% !important;
                 border-right: none;
                 border-bottom: 1px solid var(--border);
+                height: auto !important;
             }}
+            .modal-middle,
             .modal-right {{
-                width: 100%;
-            }}
-            .modal-container {{
-                max-height: 90vh;
-                height: 90vh;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                padding: 16px !important;
             }}
         }}
 
@@ -2589,63 +2782,103 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
     <!-- Details Modal -->
     <div id="details-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
         <div class="modal-container">
-            <button class="modal-close" aria-label="Close modal">&times;</button>
+            <button class="modal-close" aria-label="Close modal">
+                <svg class="close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
             <div class="modal-body">
                 <!-- Left Side: Preview & Details -->
                 <div class="modal-left">
-                    <div class="modal-preview-container">
-                        <img id="modal-image" src="" alt="LoRA Preview">
-                    </div>
-                    <div class="modal-meta-rows">
-                        <div class="meta-row">
-                            <strong>Creator</strong>
-                            <div class="meta-value-container">
-                                <span id="modal-creator"></span>
-                            </div>
-                        </div>
-                        <div class="meta-row">
-                            <strong>Base Model</strong>
-                            <div class="meta-value-container">
-                                <span id="modal-base-model"></span>
-                            </div>
-                        </div>
-                        <div class="meta-row">
-                            <strong>Filename</strong>
-                            <div class="meta-value-container">
-                                <span id="modal-filename"></span>
-                                <button class="btn-copy-meta" data-target="modal-filename" title="Copy Filename" type="button">
-                                    <svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    <div class="modal-left-scrollable">
+                        <h2 id="modal-title" style="margin-top: 0; margin-bottom: 8px; font-size: 22px; font-weight: 700; color: var(--text); white-space: normal; word-break: break-word; max-height: 115px; overflow-y: auto; scrollbar-width: thin;">Model Name</h2>
+                        
+                        <div id="modal-version-container" class="version-selector-container" style="margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; border: none; background: transparent; padding: 0;">
+                            <span id="modal-version-count-label" class="version-label" style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Version (0)</span>
+                            <div class="modal-version-select-wrapper" style="display: flex; gap: 8px; align-items: center; width: 100%;">
+                                <div style="position: relative; flex: 1;">
+                                    <select id="modal-version-select" class="version-select" aria-label="Select model version" style="width: 100%; padding: 10px 32px 10px 12px; background-color: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; color: var(--text); appearance: none; -webkit-appearance: none; cursor: pointer; background-image: none;">
+                                        <!-- dynamically populated -->
+                                    </select>
+                                    <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-muted); pointer-events: none;">
+                                        <polyline points="6 9 12 15 18 9"/>
+                                    </svg>
+                                </div>
+                                <button id="modal-btn-delete-version" class="btn-delete-version" aria-label="Delete this version" type="button" tabindex="0" style="flex-shrink: 0; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #f87171; padding: 10px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 38px; width: 38px; box-sizing: border-box; transition: var(--transition);">
+                                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        <line x1="10" y1="11" x2="10" y2="17"/>
+                                        <line x1="14" y1="11" x2="14" y2="17"/>
                                     </svg>
                                 </button>
                             </div>
                         </div>
-                        <div class="meta-row">
-                            <strong>Path</strong>
-                            <div class="meta-value-container">
-                                <span id="modal-path"></span>
-                                <button id="modal-btn-open-folder" class="btn-open-folder-meta" title="Open Folder on Disk" type="button">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                                    </svg>
-                                </button>
+
+                        <div class="modal-preview-container">
+                            <img id="modal-image" src="" alt="LoRA Preview">
+                        </div>
+
+                        <div id="modal-meta-container" class="modal-section-group">
+                            <div class="modal-meta-rows">
+                                <div class="meta-row" id="modal-creator-row">
+                                    <strong>Creator</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-creator"></span>
+                                    </div>
+                                </div>
+                                <div class="meta-row">
+                                    <strong>Base Model</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-base-model"></span>
+                                    </div>
+                                </div>
+                                <div class="meta-row">
+                                    <strong>Filename</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-filename"></span>
+                                        <button class="btn-copy-meta" data-target="modal-filename" title="Copy Filename" type="button">
+                                            <svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="meta-row">
+                                    <strong>Path</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-path"></span>
+                                        <button id="modal-btn-open-folder" class="btn-open-folder-meta" title="Open Folder on Disk" type="button">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="modal-actions-bar">
+                    
+                    <div class="modal-left-actions">
                         <button id="modal-btn-copy-tag" class="btn-action-primary">Copy Tag</button>
                         <button id="modal-btn-add-prompt" class="btn-action-secondary">Add to Prompt</button>
                         <a id="modal-btn-civitai" class="btn-action-civitai" target="_blank" rel="noopener noreferrer">View on CivitAI</a>
                     </div>
                 </div>
+
+                <!-- Middle Column: Metadata (dynamically populated in 3-column mode) -->
+                <div class="modal-middle" style="display: none;">
+                </div>
+
                 <!-- Right Side: Edit Panel -->
                 <div class="modal-right">
-                    <h2 id="modal-title">Model Name</h2>
-                    
-                    <div class="modal-section">
+                    <!-- Description Section -->
+                    <div class="modal-section" id="modal-section-description" style="margin-top: 0; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;">
                         <h3>Description</h3>
-                        <div id="modal-description" class="modal-description-text"></div>
+                        <div id="modal-description-placeholder" class="empty-placeholder" style="display: none; height: 150px; justify-content: center; align-items: center; border: 1px dashed var(--border); border-radius: 8px; box-sizing: border-box; padding: 12px;">— No description available —</div>
+                        <div id="modal-description" class="modal-description-text" style="height: 150px; overflow-y: auto; resize: none; box-sizing: border-box;"></div>
                     </div>
 
                     <!-- Tags Section (dynamic display) -->
@@ -2656,7 +2889,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     
                     <!-- Grid 2-col for Rating/Collections and Notes -->
                     <div class="grid-2-col">
-                        <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div id="modal-organization-container" class="modal-section-group">
                             <!-- Rating System -->
                             <div class="modal-section">
                                 <h3>Personal Rating</h3>
@@ -2673,10 +2906,36 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                             <div class="modal-section">
                                 <h3>Collections</h3>
                                 <div class="collections-container">
-                                    <div id="modal-collections-list" class="collections-checkbox-list"></div>
-                                    <div class="add-collection-form">
-                                        <input type="text" id="input-new-collection" placeholder="New collection...">
-                                        <button id="btn-add-collection" class="btn-mini" type="button">Add</button>
+                                    <div class="collections-box" style="min-height: 50px; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255, 255, 255, 0.01); display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; margin-bottom: 8px;">
+                                        <div id="modal-collections-placeholder" style="color: var(--text-muted); font-size: 13px; text-align: center;">
+                                            — No collections assigned —
+                                        </div>
+                                        <div id="modal-collections-chips-list" class="modal-tags-container" style="width: 100%; justify-content: center;">
+                                            <!-- Collection chips display like: [ Oshi no Ko x ] -->
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="collections-actions-container" style="position: relative;">
+                                        <button id="btn-show-add-collection-popup" class="btn-action-secondary" type="button" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
+                                            <span>+ Add Collection</span>
+                                        </button>
+                                        
+                                        <!-- Searchable Multi-Select Collections Popup -->
+                                        <div id="modal-collections-popup" class="collections-popup" hidden style="width: 100%; box-sizing: border-box;">
+                                            <div class="popup-search-wrapper">
+                                                <svg class="popup-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <circle cx="11" cy="11" r="8"/>
+                                                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                                </svg>
+                                                <input id="modal-popup-collections-search" type="text" placeholder="Search collections..." autocomplete="off">
+                                            </div>
+                                            <div id="modal-popup-collections-list" class="popup-collections-list">
+                                                <!-- Populated with Recently Used & All Collections -->
+                                            </div>
+                                            <div class="popup-footer">
+                                                <button id="modal-collections-done-btn" class="btn-mini" type="button" style="height: 30px; line-height: 30px; padding: 0 16px;">Done</button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2685,43 +2944,48 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         <!-- Notes Column -->
                         <div class="modal-section" style="display: flex; flex-direction: column;">
                             <h3>Notes</h3>
-                            <textarea id="modal-notes" placeholder="Looks best around 0.8 weight. Add notes..." style="flex: 1; min-height: 120px;"></textarea>
+                            <div id="modal-notes-placeholder" class="empty-placeholder" style="display: none; height: 100%;">
+                                — No notes yet —
+                                <button id="btn-add-note-placeholder" class="btn-mini" type="button" style="margin-top: 8px; width: fit-content;">+ Add Note</button>
+                            </div>
+                            <textarea id="modal-notes" placeholder="Looks best around 0.8 weight. Add notes..." style="height: 90px; min-height: 60px; max-height: 150px; resize: vertical;"></textarea>
                         </div>
                     </div>
                     
-                    <!-- Triggers -->
-                    <div class="modal-section grid-2-col">
+                    <!-- Triggers stacked vertically (No two column layout) -->
+                    <div class="modal-section" style="display: flex; flex-direction: column; gap: 16px;">
                         <div>
                             <h3>Official Triggers</h3>
-                            <div id="modal-official-triggers" class="trigger-groups-container" style="max-height: 240px; border: none; background: transparent; padding: 0;"></div>
+                            <div id="modal-official-triggers" class="trigger-groups-container" style="max-height: 280px; border: none; background: transparent; padding: 0; margin-top: 8px;"></div>
                         </div>
                         <div>
-                            <h3>Personal Triggers</h3>
-                            <div id="modal-personal-triggers-container" class="trigger-groups-container" style="max-height: 240px; border: none; background: transparent; padding: 0;">
-                                <div class="trigger-group expanded" id="personal-trigger-group">
-                                    <div class="trigger-group-header" role="button" aria-expanded="true" tabindex="0" aria-label="Toggle Personal Triggers">
-                                        <span class="trigger-group-arrow">▶</span>
-                                        <span class="trigger-group-title">Personal Triggers</span>
-                                        <button class="btn-copy-group" aria-label="Copy Personal triggers" type="button" tabindex="0" id="btn-copy-personal-triggers">
-                                            <svg class="btn-icon copy-icon-normal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                                            </svg>
-                                            <svg class="btn-icon copy-icon-success" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                                <polyline points="20 6 9 17 4 12"/>
-                                            </svg>
-                                            <span class="copy-group-feedback">Copied!</span>
-                                        </button>
-                                    </div>
-                                    <div class="trigger-group-content-wrapper">
-                                        <div class="trigger-group-content">
-                                            <div id="modal-personal-triggers" class="triggers-list-edit" style="border:none; background:transparent; padding:8px 12px 12px 12px; max-height:none; overflow:visible; display:flex; flex-wrap:wrap; gap:6px;">
-                                                <!-- pills here -->
-                                            </div>
-                                            <div class="add-trigger-form" style="padding: 0 12px 12px 12px;">
-                                                <input type="text" id="input-new-trigger" placeholder="New trigger...">
-                                                <button id="btn-add-trigger" class="btn-mini" type="button">Add</button>
-                                            </div>
+                            <div class="trigger-group" id="personal-trigger-group">
+                                <div class="trigger-group-header" role="button" aria-expanded="false" tabindex="0" aria-label="Toggle Personal Triggers">
+                                    <span class="trigger-group-arrow">▶</span>
+                                    <span class="trigger-group-title" id="personal-triggers-header-title">Personal Triggers (0)</span>
+                                    <button class="btn-copy-group" aria-label="Copy Personal triggers" type="button" tabindex="0" id="btn-copy-personal-triggers">
+                                        <svg class="btn-icon copy-icon-normal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                        </svg>
+                                        <svg class="btn-icon copy-icon-success" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                        <span class="copy-group-feedback">Copied!</span>
+                                    </button>
+                                </div>
+                                <div class="trigger-group-content-wrapper">
+                                    <div class="trigger-group-content">
+                                        <div id="modal-personal-triggers-placeholder" class="empty-placeholder" style="display: none; margin: 12px; padding: 12px; box-sizing: border-box;">
+                                            — No personal triggers yet —
+                                            <button id="btn-add-trigger-placeholder" class="btn-mini" type="button" style="margin-top: 8px; width: fit-content; display: block;">+ Add Trigger</button>
+                                        </div>
+                                        <div id="modal-personal-triggers" class="triggers-list-edit" style="border:none; background:transparent; padding:8px 12px 12px 12px; max-height:none; overflow:visible; display:flex; flex-wrap:wrap; gap:6px;">
+                                            <!-- pills here -->
+                                        </div>
+                                        <div class="add-trigger-form" id="personal-trigger-add-form" style="padding: 0 12px 12px 12px; display: none;">
+                                            <input type="text" id="input-new-trigger" placeholder="New trigger...">
+                                            <button id="btn-add-trigger" class="btn-mini" type="button">Add</button>
                                         </div>
                                     </div>
                                 </div>
@@ -3382,8 +3646,21 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         let currentCollections = [];
         let currentRating = 0;
         let globalCollections = [];
+        
+        const RECENT_COLLECTIONS_KEY = "lora_gallery_recent_collections";
+        let recentCollections = [];
+        try {{
+            recentCollections = JSON.parse(localStorage.getItem(RECENT_COLLECTIONS_KEY)) || [];
+        }} catch(e) {{
+            recentCollections = [];
+        }}
+        
+        function markCollectionAsRecent(name) {{
+            recentCollections = [name, ...recentCollections.filter(c => c !== name)].slice(0, 5);
+            localStorage.setItem(RECENT_COLLECTIONS_KEY, JSON.stringify(recentCollections));
+        }}
 
-        // Load global collections from API
+        // Load global collections from API once
         function loadCollections() {{
             return fetch("/api/collections")
                 .then(res => res.json())
@@ -3400,12 +3677,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             
             // Extract static details
             const name = card.dataset.name;
-            const filename = card.dataset.filename;
-            const stem = card.dataset.stem;
-            const path = card.dataset.path;
-            const creator = card.dataset.creator || "Unknown";
-            const baseModel = card.dataset.baseModel || "Unknown";
-            const description = card.dataset.description || "No description available.";
             const tags = JSON.parse(card.dataset.tags || "[]");
 
             // Extract user data
@@ -3414,14 +3685,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             currentRating = userData.rating || 0;
             const notes = userData.notes || "";
 
-            // Populate fields
+            // Populate static name
             document.getElementById("modal-title").textContent = name;
-            document.getElementById("modal-creator").textContent = creator;
-            document.getElementById("modal-base-model").textContent = baseModel;
-            document.getElementById("modal-filename").textContent = filename;
-            document.getElementById("modal-path").textContent = path;
-            document.getElementById("modal-description").innerHTML = description;
-            document.getElementById("modal-notes").value = notes;
 
             // Hide/Show Tags Section dynamically
             const tagsSection = document.getElementById("modal-section-tags");
@@ -3441,51 +3706,108 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }}
             }}
 
-            // Populate CivitAI link
-            const select = card.querySelector(".version-select");
+            // Populate versions select
             const versions = JSON.parse(card.dataset.versions || "[]");
-            const selectedVer = select ? versions.find(v => v.file_stem === select.value) : versions[0];
-            const civitaiLink = document.getElementById("modal-btn-civitai");
-            if (civitaiLink) {{
-                const modelId = selectedVer ? selectedVer.model_id : null;
-                const versionId = selectedVer ? selectedVer.version_id : null;
-                if (modelId) {{
-                    civitaiLink.style.display = "inline-flex";
-                    let url = `https://civitai.red/models/${{modelId}}`;
-                    if (versionId) {{
-                        url += `?modelVersionId=${{versionId}}`;
+            const modalVersionSelect = document.getElementById("modal-version-select");
+            const modalVersionCountLabel = document.getElementById("modal-version-count-label");
+            
+            if (modalVersionSelect) {{
+                modalVersionSelect.innerHTML = "";
+                versions.forEach(v => {{
+                    const opt = document.createElement("option");
+                    opt.value = v.file_stem;
+                    opt.textContent = v.version_name || v.file_stem;
+                    modalVersionSelect.appendChild(opt);
+                }});
+                modalVersionSelect.value = card.dataset.stem;
+            }}
+            if (modalVersionCountLabel) {{
+                modalVersionCountLabel.textContent = `Version (${{versions.length}})`;
+            }}
+
+            // Find current selected version details
+            const selectedVer = versions.find(v => v.file_stem === card.dataset.stem) || versions[0];
+            
+            // Populate version-specific static details
+            if (selectedVer) {{
+                const creator = card.dataset.creator;
+                const creatorRow = document.getElementById("modal-creator-row");
+                if (creatorRow) {{
+                    if (!creator || creator.trim() === "" || creator === "Unknown" || creator === "null") {{
+                        creatorRow.style.display = "none";
+                    }} else {{
+                        creatorRow.style.display = "flex";
+                        document.getElementById("modal-creator").textContent = creator;
                     }}
-                    civitaiLink.href = url;
+                }}
+                document.getElementById("modal-base-model").textContent = selectedVer.base_model || "Unknown";
+                document.getElementById("modal-filename").textContent = selectedVer.filename;
+                document.getElementById("modal-path").textContent = selectedVer.relative_path;
+                
+                // Description placeholder check
+                const descEl = document.getElementById("modal-description");
+                const descPlaceholder = document.getElementById("modal-description-placeholder");
+                if (descPlaceholder) {{
+                    if (!selectedVer.description || selectedVer.description.trim() === "") {{
+                        descPlaceholder.style.display = "block";
+                        if (descEl) descEl.style.display = "none";
+                    }} else {{
+                        descPlaceholder.style.display = "none";
+                        if (descEl) {{
+                            descEl.style.display = "block";
+                            descEl.innerHTML = selectedVer.description;
+                        }}
+                    }}
+                }}
+
+                // Populate CivitAI link
+                const civitaiLink = document.getElementById("modal-btn-civitai");
+                if (civitaiLink) {{
+                    const modelId = selectedVer.model_id;
+                    const versionId = selectedVer.version_id;
+                    if (modelId) {{
+                        civitaiLink.style.display = "inline-flex";
+                        let url = `https://civitai.red/models/${{modelId}}`;
+                        if (versionId) {{
+                            url += `?modelVersionId=${{versionId}}`;
+                        }}
+                        civitaiLink.href = url;
+                    }} else {{
+                        civitaiLink.style.display = "none";
+                    }}
+                }}
+
+                // Image preview
+                const imgEl = document.getElementById("modal-image");
+                if (selectedVer.preview_image) {{
+                    imgEl.style.display = "block";
+                    imgEl.src = selectedVer.preview_image;
                 }} else {{
-                    civitaiLink.style.display = "none";
+                    imgEl.style.display = "none";
+                }}
+
+                // Official Triggers
+                const offTrigContainer = document.getElementById("modal-official-triggers");
+                if (offTrigContainer) {{
+                    offTrigContainer.innerHTML = selectedVer.trigger_groups_html || '<span class="text-muted" style="font-size:12px; padding: 4px;">None</span>';
                 }}
             }}
 
-            // Image preview
-            const imgEl = document.getElementById("modal-image");
-            const cardImg = card.querySelector(".preview img");
-            if (cardImg) {{
-                imgEl.style.display = "block";
-                imgEl.src = cardImg.src;
-            }} else {{
-                imgEl.style.display = "none";
-            }}
-
-            // Grouped Official Triggers
-            const offTrigContainer = document.getElementById("modal-official-triggers");
-            offTrigContainer.innerHTML = "";
-            if (selectedVer && selectedVer.trigger_groups_html) {{
-                offTrigContainer.innerHTML = selectedVer.trigger_groups_html;
-            }} else {{
-                offTrigContainer.innerHTML = '<span class="text-muted" style="font-size:12px; padding: 4px;">None</span>';
-            }}
-
             // Render interactive lists
-            renderPersonalTriggers();
-            renderCollections();
             renderRating(currentRating);
+            renderModalCollectionChips();
+            renderModalNotes(notes);
+            renderPersonalTriggers();
 
-            // Re-bind Action buttons
+            // Set Personal Triggers section collapsed by default
+            const personalGroupDiv = document.getElementById("personal-trigger-group");
+            if (personalGroupDiv) {{
+                personalGroupDiv.classList.remove("expanded");
+                const header = personalGroupDiv.querySelector(".trigger-group-header");
+                if (header) header.setAttribute("aria-expanded", "false");
+            }}
+
+            // Re-bind Action buttons (using current selected value dynamically)
             const copyTagBtn = document.getElementById("modal-btn-copy-tag");
             const addPromptBtn = document.getElementById("modal-btn-add-prompt");
 
@@ -3495,7 +3817,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             addPromptBtn.parentNode.replaceChild(newAddBtn, addPromptBtn);
 
             newCopyBtn.addEventListener("click", () => {{
-                const tag = `<lora:${{stem}}:${{currentWeight}}>`;
+                const currentStem = document.getElementById("modal-version-select").value;
+                const tag = `<lora:${{currentStem}}:${{currentWeight}}>`;
                 navigator.clipboard.writeText(tag).then(() => {{
                     newCopyBtn.textContent = "Copied!";
                     setTimeout(() => newCopyBtn.textContent = "Copy Tag", 1500);
@@ -3503,10 +3826,15 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }});
 
             newAddBtn.addEventListener("click", () => {{
-                addToken(stem);
+                const currentStem = document.getElementById("modal-version-select").value;
+                addToken(currentStem);
                 newAddBtn.textContent = "Added!";
                 setTimeout(() => newAddBtn.textContent = "Add to Prompt", 1500);
             }});
+
+            // Adjust layout based on image orientation
+            adjustModalLayout();
+            setupAutoHideScrollbars();
 
             // Show Modal
             const modal = document.getElementById("details-modal");
@@ -3540,10 +3868,31 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         function renderPersonalTriggers() {{
             const container = document.getElementById("modal-personal-triggers");
+            const placeholder = document.getElementById("modal-personal-triggers-placeholder");
+            const form = document.getElementById("personal-trigger-add-form");
+            const headerTitle = document.getElementById("personal-triggers-header-title");
+            
+            if (!container) return;
             container.innerHTML = "";
-            if (currentPersonalTriggers.length === 0) {{
-                container.innerHTML = '<span class="text-muted" style="font-size:12px; padding: 4px;">No personal triggers.</span>';
+            
+            const count = currentPersonalTriggers.length;
+            if (headerTitle) {{
+                headerTitle.textContent = `Personal Triggers (${{count}})`;
+            }}
+            
+            if (count === 0) {{
+                if (placeholder) {{
+                    placeholder.style.display = "flex";
+                    placeholder.style.flexDirection = "column";
+                    placeholder.style.alignItems = "center";
+                }}
+                if (form) form.style.display = "none";
+                container.style.display = "none";
             }} else {{
+                if (placeholder) placeholder.style.display = "none";
+                if (form) form.style.display = "flex";
+                container.style.display = "flex";
+                
                 currentPersonalTriggers.forEach((trig, idx) => {{
                     const span = document.createElement("span");
                     span.className = "trigger-tag-edit";
@@ -3557,102 +3906,184 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }});
             }}
             
-            // Sync words in the personal trigger group attribute for group copy button
             const groupDiv = document.getElementById("personal-trigger-group");
             if (groupDiv) {{
                 groupDiv.dataset.groupWords = currentPersonalTriggers.join(", ");
             }}
         }}
 
-        function renderCollections() {{
-            const container = document.getElementById("modal-collections-list");
-            container.innerHTML = "";
+        function normalizeCollectionName(name) {{
+            return name.trim().replace(/\s+/g, ' ');
+        }}
+
+        function adjustModalLayout() {{
+            const imgEl = document.getElementById("modal-image");
+            const modalBody = document.querySelector(".modal-body");
+            const leftScrollable = document.querySelector(".modal-left-scrollable");
+            const middleColumn = document.querySelector(".modal-middle");
+            const rightColumn = document.querySelector(".modal-right");
+            const metaContainer = document.getElementById("modal-meta-container");
+            const orgContainer = document.getElementById("modal-organization-container");
+            const tagsSection = document.getElementById("modal-section-tags");
             
-            if (globalCollections.length === 0) {{
-                container.innerHTML = '<span class="text-muted" style="font-size:12px; padding: 4px;">No collections defined.</span>';
-                return;
+            if (!imgEl || !modalBody || !leftScrollable || !middleColumn || !rightColumn || !metaContainer || !orgContainer) return;
+            
+            // Default to landscape (2-column) if no image or fails to load
+            let isPortrait = false;
+            if (imgEl.style.display !== "none" && imgEl.naturalWidth && imgEl.naturalHeight) {{
+                isPortrait = imgEl.naturalHeight > imgEl.naturalWidth;
             }}
             
-            globalCollections.forEach(coll => {{
-                const label = document.createElement("label");
-                label.className = "collection-checkbox-label";
+            if (isPortrait) {{
+                // 3-column portrait layout
+                modalBody.classList.add("three-column");
+                modalBody.classList.remove("two-column");
+                middleColumn.style.display = "flex";
                 
-                const checkbox = document.createElement("input");
-                checkbox.type = "checkbox";
-                checkbox.value = coll;
+                // Move organization container (rating/collections) to middle column (at the top)
+                middleColumn.appendChild(orgContainer);
+                // Move metadata container to middle column
+                middleColumn.appendChild(metaContainer);
                 
-                const isMember = currentCollections.includes(coll);
-                checkbox.checked = isMember;
-                if (isMember) {{
-                    label.classList.add("active");
+                // Move description section to middle column (below metadata)
+                const descSection = document.getElementById("modal-section-description");
+                if (descSection) {{
+                    middleColumn.appendChild(descSection);
                 }}
                 
-                checkbox.addEventListener("change", () => {{
-                    if (checkbox.checked) {{
-                        if (!currentCollections.includes(coll)) {{
-                            currentCollections.push(coll);
-                        }}
-                        label.classList.add("active");
+                // Set modal-left width
+                document.querySelector(".modal-left").style.width = "30%";
+                document.querySelector(".modal-left").style.borderRight = "1px solid var(--border)";
+            }} else {{
+                // 2-column landscape layout
+                modalBody.classList.add("two-column");
+                modalBody.classList.remove("three-column");
+                middleColumn.style.display = "none";
+                
+                // Move description section back to right column (at the top)
+                const descSection = document.getElementById("modal-section-description");
+                if (descSection) {{
+                    rightColumn.insertBefore(descSection, rightColumn.firstChild);
+                }}
+                
+                // Move organization container back to right column grid container before Notes
+                const gridContainer = document.querySelector(".modal-right .grid-2-col");
+                if (gridContainer) {{
+                    gridContainer.insertBefore(orgContainer, gridContainer.firstChild);
+                }} else {{
+                    if (tagsSection) {{
+                        rightColumn.insertBefore(orgContainer, tagsSection);
                     }} else {{
-                        currentCollections = currentCollections.filter(c => c !== coll);
-                        label.classList.remove("active");
+                        rightColumn.insertBefore(orgContainer, rightColumn.firstChild);
                     }}
-                    autoSaveUserData();
+                }}
+                
+                // Move metadata container back to left scrollable
+                leftScrollable.appendChild(metaContainer);
+                
+                // Restore widths
+                document.querySelector(".modal-left").style.width = "40%";
+                document.querySelector(".modal-left").style.borderRight = "1px solid var(--border)";
+            }}
+        }}
+
+        function setupAutoHideScrollbars() {{
+            const scrollableSelectors = [
+                '#modal-title',
+                '.modal-left-scrollable',
+                '.triggers-list-read',
+                '.triggers-list-edit',
+                '.modal-popup-collections-list'
+            ];
+            
+            document.querySelectorAll(scrollableSelectors.join(', ')).forEach(el => {{
+                if (el.dataset.scrollBinded) return;
+                el.dataset.scrollBinded = "true";
+                
+                let timeoutId = null;
+                
+                const showScrollbar = () => {{
+                    el.classList.add("is-scrolling");
+                }};
+                
+                const hideScrollbar = () => {{
+                    el.classList.remove("is-scrolling");
+                }};
+                
+                el.addEventListener("scroll", () => {{
+                    showScrollbar();
+                    clearTimeout(timeoutId);
+                    timeoutId = setTimeout(() => {{
+                        if (!el.matches(':hover')) {{
+                            hideScrollbar();
+                        }}
+                        timeoutId = null;
+                    }}, 1000);
                 }});
                 
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(" " + coll));
-                
-                // Add Delete button
-                const delBtn = document.createElement("button");
-                delBtn.type = "button";
-                delBtn.className = "btn-delete-collection-global";
-                delBtn.innerHTML = "&times;";
-                delBtn.title = "Delete collection globally";
-                delBtn.addEventListener("click", (e) => {{
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    if (confirm(`Are you sure you want to delete the collection "${{coll}}" globally?\n\nThis will remove it from all models in the library.`)) {{
-                        fetch("/api/delete_collection", {{
-                            method: "POST",
-                            headers: {{
-                                "Content-Type": "application/json"
-                            }},
-                            body: JSON.stringify({{ name: coll }})
-                        }})
-                        .then(res => {{
-                            if (!res.ok) throw new Error("Failed to delete collection globally");
-                            return res.json();
-                        }})
-                        .then(data => {{
-                            globalCollections = data.collections || [];
-                            currentCollections = currentCollections.filter(c => c.toLowerCase() !== coll.toLowerCase());
-                            
-                            // Update all cards' collections datasets in-memory
-                            cards.forEach(card => {{
-                                try {{
-                                    const cardColls = JSON.parse(card.dataset.collections || "[]");
-                                    const updatedCardColls = cardColls.filter(c => c.toLowerCase() !== coll.toLowerCase());
-                                    card.dataset.collections = JSON.stringify(updatedCardColls);
-                                }} catch (err) {{}}
-                            }});
-                            
-                            renderCollections();
-                            updateCollectionFilterOptions();
-                            updateFilter();
-                            showToast(`Collection "${{coll}}" deleted globally.`);
-                        }})
-                        .catch(err => {{
-                            console.error("Error deleting collection globally:", err);
-                            alert("Failed to delete collection globally: " + err.message);
-                        }});
+                el.addEventListener("mouseenter", showScrollbar);
+                el.addEventListener("mouseleave", () => {{
+                    if (!timeoutId) {{
+                        hideScrollbar();
                     }}
                 }});
-                label.appendChild(delBtn);
-                
-                container.appendChild(label);
             }});
+        }}
+        
+        function findExistingCollectionCaseInsensitive(name) {{
+            const normalized = normalizeCollectionName(name).toLowerCase();
+            return globalCollections.find(c => c.toLowerCase() === normalized);
+        }}
+
+        function renderModalCollectionChips() {{
+            const container = document.getElementById("modal-collections-chips-list");
+            const placeholder = document.getElementById("modal-collections-placeholder");
+            if (!container) return;
+            
+            container.innerHTML = "";
+            
+            if (currentCollections.length === 0) {{
+                if (placeholder) placeholder.style.display = "block";
+            }} else {{
+                if (placeholder) placeholder.style.display = "none";
+                currentCollections.forEach(name => {{
+                    const chip = document.createElement("span");
+                    chip.className = "collection-chip-modal";
+                    chip.innerHTML = `
+                        <span>${{escapeHTML(name)}}</span>
+                        <button class="btn-remove-chip" type="button" aria-label="Remove collection ${{escapeHTML(name)}}">&times;</button>
+                    `;
+                    chip.querySelector(".btn-remove-chip").addEventListener("click", (e) => {{
+                        e.stopPropagation();
+                        currentCollections = currentCollections.filter(c => c !== name);
+                        renderModalCollectionChips();
+                        // If popup is open, update its checklist checkmarks too
+                        const popup = document.getElementById("modal-collections-popup");
+                        if (popup && !popup.hidden) {{
+                            renderModalCollectionsPopupList(document.getElementById("modal-popup-collections-search").value);
+                        }}
+                        autoSaveUserData();
+                    }});
+                    container.appendChild(chip);
+                }});
+            }}
+        }}
+
+        function renderModalNotes(notesText) {{
+            const textarea = document.getElementById("modal-notes");
+            const placeholder = document.getElementById("modal-notes-placeholder");
+            if (!textarea || !placeholder) return;
+            
+            textarea.value = notesText || "";
+            if (!notesText || notesText.trim() === "") {{
+                placeholder.style.display = "flex";
+                placeholder.style.flexDirection = "column";
+                placeholder.style.alignItems = "center";
+                textarea.style.display = "none";
+            }} else {{
+                placeholder.style.display = "none";
+                textarea.style.display = "block";
+            }}
         }}
 
         // Star Rating selector listener and hover dynamics
@@ -3792,74 +4223,73 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }}
         }});
 
-        // Add Collection handlers
-        document.getElementById("btn-add-collection").addEventListener("click", () => {{
-            const input = document.getElementById("input-new-collection");
-            const val = input.value.trim();
-            if (!val) return;
+        // Global Collection Deletion handler
+        function deleteCollectionGlobally(name) {{
+            if (!confirm(`Are you sure you want to delete the collection "${{name}}" globally? This will remove it from all models in the library.`)) {{
+                return;
+            }}
             
-            // Case-insensitive check in global collections
-            const existsVal = globalCollections.find(g => g.toLowerCase() === val.toLowerCase());
-            
-            if (existsVal) {{
-                // Collection already exists globally, just select it if not already selected
-                if (!currentCollections.includes(existsVal)) {{
-                    currentCollections.push(existsVal);
-                }}
-                renderCollections();
-                input.value = "";
-                autoSaveUserData();
-            }} else {{
-                // Save globally
-                fetch("/api/collections", {{
-                    method: "POST",
-                    headers: {{
-                        "Content-Type": "application/json"
-                    }},
-                    body: JSON.stringify({{ name: val }})
-                }})
-                .then(res => {{
-                    if (!res.ok) throw new Error("Failed to save collection globally");
-                    return res.json();
-                }})
-                .then(data => {{
-                    globalCollections = data.collections || [];
-                    // Find actual casing returned by server
-                    const addedColl = globalCollections.find(g => g.toLowerCase() === val.toLowerCase()) || val;
-                    if (!currentCollections.includes(addedColl)) {{
-                        currentCollections.push(addedColl);
+            fetch("/api/delete_collection", {{
+                method: "POST",
+                headers: {{
+                    "Content-Type": "application/json"
+                }},
+                body: JSON.stringify({{ name: name }})
+            }})
+            .then(res => {{
+                if (!res.ok) throw new Error("Failed to delete collection globally");
+                return res.json();
+            }})
+            .then(data => {{
+                globalCollections = data.collections || [];
+                
+                // Remove from local active currentCollections if selected
+                currentCollections = currentCollections.filter(c => c.toLowerCase() !== name.toLowerCase());
+                
+                // Remove from localStorage recents
+                recentCollections = recentCollections.filter(c => c.toLowerCase() !== name.toLowerCase());
+                localStorage.setItem(RECENT_COLLECTIONS_KEY, JSON.stringify(recentCollections));
+                
+                // Remove from all gallery card element datasets in-memory
+                const cardsList = document.querySelectorAll(".card");
+                cardsList.forEach(card => {{
+                    let cardColls = [];
+                    try {{
+                        cardColls = JSON.parse(card.dataset.collections || "[]");
+                    }} catch(e) {{
+                        cardColls = [];
                     }}
-                    renderCollections();
-                    updateCollectionFilterOptions();
-                    autoSaveUserData();
-                }})
-                .catch(err => {{
-                    console.error("Error creating collection:", err);
-                    // Fallback to local only if server fails
-                    if (!currentCollections.includes(val)) {{
-                        currentCollections.push(val);
+                    if (cardColls.some(c => c.toLowerCase() === name.toLowerCase())) {{
+                        const newColls = cardColls.filter(c => c.toLowerCase() !== name.toLowerCase());
+                        card.dataset.collections = JSON.stringify(newColls);
+                        
+                        // Update indicators
+                        const notes = card.dataset.notes || "";
+                        const personalTriggers = JSON.parse(card.dataset.personalTriggers || "[]");
+                        const rating = parseInt(card.dataset.rating || "0");
+                        updateCardIndicators(card, notes, personalTriggers, rating, newColls);
                     }}
-                    if (!globalCollections.includes(val)) {{
-                        globalCollections.push(val);
-                    }}
-                    renderCollections();
-                    updateCollectionFilterOptions();
-                    autoSaveUserData();
                 }});
-                input.value = "";
-            }}
-        }});
-        document.getElementById("input-new-collection").addEventListener("keydown", (e) => {{
-            if (e.key === "Enter") {{
-                e.preventDefault();
-                document.getElementById("btn-add-collection").click();
-            }}
-        }});
+                
+                // Re-render UI
+                renderModalCollectionsPopupList(document.getElementById("modal-popup-collections-search").value);
+                renderModalCollectionChips();
+                updateCollectionFilterOptions();
+                updateFilter();
+            }})
+            .catch(err => {{
+                console.error("Error deleting collection globally:", err);
+                alert("Failed to delete collection: " + err.message);
+            }});
+        }}
 
         // Copy Combined Triggers handler
         document.getElementById("modal-btn-copy-all-triggers").addEventListener("click", () => {{
             if (!currentModalCard) return;
-            const officialTriggers = JSON.parse(currentModalCard.dataset.officialTriggers || "[]");
+            const selectVal = document.getElementById("modal-version-select").value;
+            const versions = JSON.parse(currentModalCard.dataset.versions || "[]");
+            const selectedVer = versions.find(v => v.file_stem === selectVal);
+            const officialTriggers = selectedVer ? selectedVer.trigger_words : [];
             const combined = [...officialTriggers, ...currentPersonalTriggers];
             const text = combined.join(", ");
             
@@ -3877,7 +4307,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         function autoSaveUserData() {{
             if (!currentModalCard) return;
             
-            const relPath = currentModalCard.dataset.path;
+            const selectVal = document.getElementById("modal-version-select").value;
+            const versions = JSON.parse(currentModalCard.dataset.versions || "[]");
+            const selectedVer = versions.find(v => v.file_stem === selectVal) || versions[0];
+            const relPath = selectedVer.relative_path;
             const notesVal = document.getElementById("modal-notes").value;
             
             const payload = {{
@@ -3902,11 +4335,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 return res.json();
             }})
             .then(data => {{
-                // Update datasets in-memory
+                // Update datasets in-memory on the card
                 currentModalCard.dataset.collections = JSON.stringify(currentCollections);
                 currentModalCard.dataset.rating = currentRating;
                 
-                // Redraw indicators
+                // Redraw indicators on the card
                 updateCardIndicators(currentModalCard, notesVal, currentPersonalTriggers, currentRating, currentCollections);
                 
                 // Update collection select options in-memory
@@ -3966,61 +4399,256 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         // Render collections in the searchable popup list
-        function renderCollectionsPopupList(filterText = "") {{
+        // Render collections in the searchable modal popup checklist
+        function renderModalCollectionsPopupList(filterText = "") {{
+            const listContainer = document.getElementById("modal-popup-collections-list");
+            if (!listContainer) return;
+            listContainer.innerHTML = "";
+            
+            const lowerFilter = filterText.trim().toLowerCase();
+            
+            // 1. Get filtered list of Recently Used collections
+            const filteredRecents = recentCollections.filter(c => 
+                c.toLowerCase().includes(lowerFilter) && globalCollections.includes(c)
+            );
+            
+            // 2. Get filtered list of All Collections (globalCollections sorted alphabetically)
+            const sortedAll = [...globalCollections].sort((a, b) => a.localeCompare(b));
+            const filteredAll = sortedAll.filter(c => 
+                c.toLowerCase().includes(lowerFilter)
+            );
+            
+            let html = "";
+            let itemIndex = 0;
+            
+            // Render Recently Used section if any exist
+            if (filteredRecents.length > 0) {{
+                html += `<div class="popup-section-header">⭐ Recently Used</div>`;
+                filteredRecents.forEach(name => {{
+                    const isActive = currentCollections.includes(name);
+                    const check = isActive ? "✓" : "";
+                    const activeClass = isActive ? "active" : "";
+                    html += `
+                        <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div style="display: flex; align-items: center; min-width: 0; flex: 1;">
+                                <span class="popup-item-check">${{check}}</span>
+                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}}</span>
+                            </div>
+                            <button class="btn-delete-collection-popup" type="button" aria-label="Delete collection globally" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
+                        </div>
+                    `;
+                }});
+            }}
+            
+            // Render All Collections section
+            if (filteredAll.length > 0) {{
+                if (filteredRecents.length > 0) {{
+                    html += `<div class="popup-divider"></div>`;
+                }}
+                html += `<div class="popup-section-header">📚 All Collections</div>`;
+                filteredAll.forEach(name => {{
+                    const isActive = currentCollections.includes(name);
+                    const check = isActive ? "✓" : "";
+                    const activeClass = isActive ? "active" : "";
+                    html += `
+                        <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div style="display: flex; align-items: center; min-width: 0; flex: 1;">
+                                <span class="popup-item-check">${{check}}</span>
+                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}}</span>
+                            </div>
+                            <button class="btn-delete-collection-popup" type="button" aria-label="Delete collection globally" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
+                        </div>
+                    `;
+                }});
+            }}
+            
+            // If no match and filterText is not empty, show "Create <name>"
+            const cleanQuery = filterText.trim();
+            if (cleanQuery && !globalCollections.some(c => c.toLowerCase() === cleanQuery.toLowerCase())) {{
+                if (html) {{
+                    html += `<div class="popup-divider"></div>`;
+                }}
+                html += `
+                    <div class="popup-item create-item" data-create-name="${{escapeHTML(cleanQuery)}}" data-index="${{itemIndex++}}">
+                        <span class="popup-item-check">+</span>
+                        <span class="popup-item-name">Create "${{escapeHTML(cleanQuery)}}"</span>
+                    </div>
+                `;
+            }}
+            
+            if (!html) {{
+                html = `<div class="popup-item text-muted" style="justify-content: center; font-size: 12px;">No collections found</div>`;
+            }}
+            
+            listContainer.innerHTML = html;
+            
+            // Attach event listeners to popup items
+            const items = listContainer.querySelectorAll(".popup-item");
+            items.forEach(item => {{
+                item.addEventListener("click", () => {{
+                    handlePopupItemClick(item);
+                }});
+                
+                const delBtn = item.querySelector(".btn-delete-collection-popup");
+                if (delBtn) {{
+                    delBtn.addEventListener("click", (e) => {{
+                        e.stopPropagation();
+                        const name = item.dataset.name;
+                        if (name) {{
+                            deleteCollectionGlobally(name);
+                        }}
+                    }});
+                }}
+            }});
+            
+            // Restore focused item visual state
+            updateModalPopupFocus();
+        }}
+
+        // Render collections in the searchable toolbar filter popup list
+        function renderToolbarCollectionsPopupList(filterText = "") {{
             const listContainer = document.getElementById("popup-collections-list");
             if (!listContainer) return;
-
             listContainer.innerHTML = "";
+            
             const lowerFilter = filterText.trim().toLowerCase();
-
-            // Virtual collections pinned at the top
-            const virtualItems = [
+            
+            // Pinned virtual collections
+            const virtuals = [
                 {{ name: "Library", icon: "📚" }},
                 {{ name: "Favorites", icon: "⭐" }}
             ];
-
-            const filteredVirtual = virtualItems.filter(item => 
-                item.name.toLowerCase().includes(lowerFilter)
-            );
-
-            // Sort user collections alphabetically
-            const sortedUserCollections = [...globalCollections].sort((a, b) => a.localeCompare(b));
-            const filteredUser = sortedUserCollections.filter(c => 
+            
+            let html = "";
+            let itemIndex = 0;
+            
+            // Render matching virtual collections
+            virtuals.forEach(item => {{
+                if (item.name.toLowerCase().includes(lowerFilter)) {{
+                    const isActive = activeCollection === item.name;
+                    const activeClass = isActive ? "active" : "";
+                    html += `
+                        <div class="popup-item ${{activeClass}}" data-name="${{item.name}}" data-index="${{itemIndex++}}">
+                            <span class="popup-item-icon" style="margin-right: 8px;">${{item.icon}}</span>
+                            <span class="popup-item-name">${{item.name}}</span>
+                        </div>
+                    `;
+                }}
+            }});
+            
+            // Render matching other collections (sorted alphabetically)
+            const sortedCollections = [...globalCollections].sort((a, b) => a.localeCompare(b));
+            const filteredCollections = sortedCollections.filter(c => 
                 c.toLowerCase().includes(lowerFilter)
             );
+            
+            if (filteredCollections.length > 0) {{
+                if (html) {{
+                    html += `<div class="popup-divider"></div>`;
+                }}
+                html += `<div class="popup-section-header">📁 Collections</div>`;
+                filteredCollections.forEach(name => {{
+                    const isActive = activeCollection === name;
+                    const activeClass = isActive ? "active" : "";
+                    html += `
+                        <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}">
+                            <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
+                            <span class="popup-item-name">${{escapeHTML(name)}}</span>
+                        </div>
+                    `;
+                }});
+            }}
+            
+            if (!html) {{
+                html = `<div class="popup-item text-muted" style="justify-content: center; font-size: 12px;">No collections found</div>`;
+            }}
+            
+            listContainer.innerHTML = html;
+            
+            // Attach event listeners to popup items
+            const items = listContainer.querySelectorAll(".popup-item");
+            items.forEach(item => {{
+                item.addEventListener("click", () => {{
+                    const name = item.dataset.name;
+                    if (name) {{
+                        selectCollection(name);
+                    }}
+                }});
+            }});
+            
+            // Restore focus visual state
+            updatePopupFocus();
+        }}
 
-            const allItems = [
-                ...filteredVirtual.map(v => ({{ ...v, isVirtual: true }})),
-                ...filteredUser.map(c => ({{ name: c, icon: "📁", isVirtual: false }}))
-            ];
-
-            if (allItems.length === 0) {{
-                const noResult = document.createElement("div");
-                noResult.className = "popup-item text-muted";
-                noResult.style.justifyContent = "center";
-                noResult.style.fontSize = "12px";
-                noResult.textContent = "No collections found";
-                listContainer.appendChild(noResult);
+        function handlePopupItemClick(item) {{
+            const createName = item.dataset.createName;
+            if (createName) {{
+                // Create new collection
+                const normalized = normalizeCollectionName(createName);
+                // Check case-insensitive exists
+                const existing = findExistingCollectionCaseInsensitive(normalized);
+                if (existing) {{
+                    if (!currentCollections.includes(existing)) {{
+                        currentCollections.push(existing);
+                        markCollectionAsRecent(existing);
+                    }}
+                    document.getElementById("modal-popup-collections-search").value = "";
+                    renderModalCollectionsPopupList("");
+                    renderModalCollectionChips();
+                }} else {{
+                    // Call API to create collection
+                    fetch("/api/collections", {{
+                        method: "POST",
+                        headers: {{
+                            "Content-Type": "application/json"
+                        }},
+                        body: JSON.stringify({{ name: normalized }})
+                    }})
+                    .then(res => {{
+                        if (!res.ok) throw new Error("Failed to save collection globally");
+                        return res.json();
+                    }})
+                    .then(data => {{
+                        globalCollections = data.collections || [];
+                        const serverCased = findExistingCollectionCaseInsensitive(normalized) || normalized;
+                        if (!currentCollections.includes(serverCased)) {{
+                            currentCollections.push(serverCased);
+                            markCollectionAsRecent(serverCased);
+                        }}
+                        document.getElementById("modal-popup-collections-search").value = "";
+                        renderModalCollectionsPopupList("");
+                        renderModalCollectionChips();
+                    }})
+                    .catch(err => {{
+                        console.error("Error creating collection:", err);
+                        // Fallback
+                        if (!globalCollections.includes(normalized)) {{
+                            globalCollections.push(normalized);
+                        }}
+                        if (!currentCollections.includes(normalized)) {{
+                            currentCollections.push(normalized);
+                            markCollectionAsRecent(normalized);
+                        }}
+                        document.getElementById("modal-popup-collections-search").value = "";
+                        renderModalCollectionsPopupList("");
+                        renderModalCollectionChips();
+                    }});
+                }}
                 return;
             }}
-
-            allItems.forEach((item, index) => {{
-                const div = document.createElement("div");
-                div.className = "popup-item";
-                if (item.name === activeCollection) {{
-                    div.classList.add("active");
+            
+            const name = item.dataset.name;
+            if (name) {{
+                const idx = currentCollections.indexOf(name);
+                if (idx > -1) {{
+                    currentCollections.splice(idx, 1);
+                }} else {{
+                    currentCollections.push(name);
+                    markCollectionAsRecent(name);
                 }}
-                div.dataset.name = item.name;
-                div.dataset.index = index;
-                
-                div.innerHTML = `<span style="margin-right: 8px; flex-shrink: 0;">${{item.icon}}</span> <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${{item.name}}</span>`;
-                
-                div.addEventListener("click", () => {{
-                    selectCollection(item.name);
-                }});
-                
-                listContainer.appendChild(div);
-            }});
+                renderModalCollectionsPopupList(document.getElementById("modal-popup-collections-search").value);
+                renderModalCollectionChips();
+            }}
         }}
 
         // Update the collection chip appearance dynamically based on the active selection
@@ -4080,7 +4708,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         function updateCollectionFilterOptions() {{
             // Render the searchable collections list
             const popupSearchInput = document.getElementById("popup-search-input");
-            renderCollectionsPopupList(popupSearchInput ? popupSearchInput.value : "");
+            renderToolbarCollectionsPopupList(popupSearchInput ? popupSearchInput.value : "");
             
             // Check if activeCollection is still valid (e.g. if it was deleted)
             if (activeCollection !== "Library" && activeCollection !== "Favorites" && !globalCollections.includes(activeCollection)) {{
@@ -4138,7 +4766,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             focusedItemIndex = -1;
             if (popupInput) {{
                 popupInput.value = "";
-                renderCollectionsPopupList("");
+                renderToolbarCollectionsPopupList("");
                 popupInput.focus();
             }}
             document.addEventListener("click", handleOutsideClick);
@@ -4156,6 +4784,69 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             const wrapper = document.querySelector(".search-wrapper");
             if (wrapper && !wrapper.contains(event.target)) {{
                 closeCollectionsPopup();
+            }}
+        }}
+
+        // Modal collections popup helpers
+        let modalFocusedItemIndex = -1;
+
+        function getVisibleModalPopupItems() {{
+            const listContainer = document.getElementById("modal-popup-collections-list");
+            if (!listContainer) return [];
+            return Array.from(listContainer.querySelectorAll(".popup-item:not(.text-muted)"));
+        }}
+
+        function updateModalPopupFocus() {{
+            const items = getVisibleModalPopupItems();
+            items.forEach((item, index) => {{
+                if (index === modalFocusedItemIndex) {{
+                    item.classList.add("focused");
+                    item.scrollIntoView({{ block: "nearest" }});
+                }} else {{
+                    item.classList.remove("focused");
+                }}
+            }});
+        }}
+
+        function toggleModalCollectionsPopup() {{
+            const popup = document.getElementById("modal-collections-popup");
+            if (!popup) return;
+            if (popup.hidden) {{
+                openModalCollectionsPopup();
+            }} else {{
+                closeModalCollectionsPopup();
+            }}
+        }}
+
+        function openModalCollectionsPopup() {{
+            const popup = document.getElementById("modal-collections-popup");
+            const searchInput = document.getElementById("modal-popup-collections-search");
+            if (!popup) return;
+            popup.hidden = false;
+            modalFocusedItemIndex = -1;
+            if (searchInput) {{
+                searchInput.value = "";
+                renderModalCollectionsPopupList("");
+                searchInput.focus();
+            }}
+            document.addEventListener("click", handleModalPopupOutsideClick);
+        }}
+
+        function closeModalCollectionsPopup() {{
+            const popup = document.getElementById("modal-collections-popup");
+            if (!popup || popup.hidden) return;
+            popup.hidden = true;
+            document.removeEventListener("click", handleModalPopupOutsideClick);
+            
+            // Save collections selection on close
+            autoSaveUserData();
+        }}
+
+        function handleModalPopupOutsideClick(event) {{
+            const popup = document.getElementById("modal-collections-popup");
+            const btn = document.getElementById("btn-show-add-collection-popup");
+            if (popup && !popup.hidden && !popup.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {{
+                closeModalCollectionsPopup();
             }}
         }}
 
@@ -4230,6 +4921,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         // Modal Close Button click listener
         document.querySelector(".modal-close").addEventListener("click", closeDetailsModal);
+
+        // Image load listener for layout adjustment
+        const imgEl = document.getElementById("modal-image");
+        if (imgEl) {{
+            imgEl.addEventListener("load", adjustModalLayout);
+        }}
 
         // Modal backdrop click listener
         document.getElementById("details-modal").addEventListener("click", (e) => {{
@@ -4326,7 +5023,189 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
             popupSearchInput.addEventListener("input", (e) => {{
                 focusedItemIndex = -1;
-                renderCollectionsPopupList(e.target.value);
+                renderToolbarCollectionsPopupList(e.target.value);
+            }});
+        }}
+
+        // Keyboard navigation and fuzzy searching inside modal collections popup
+        const modalPopupSearchInput = document.getElementById("modal-popup-collections-search");
+        if (modalPopupSearchInput) {{
+            modalPopupSearchInput.addEventListener("keydown", (e) => {{
+                const items = getVisibleModalPopupItems();
+                if (items.length === 0) return;
+
+                if (e.key === "ArrowDown") {{
+                    e.preventDefault();
+                    modalFocusedItemIndex = (modalFocusedItemIndex + 1) % items.length;
+                    updateModalPopupFocus();
+                }} else if (e.key === "ArrowUp") {{
+                    e.preventDefault();
+                    modalFocusedItemIndex = (modalFocusedItemIndex - 1 + items.length) % items.length;
+                    updateModalPopupFocus();
+                }} else if (e.key === "Enter") {{
+                    e.preventDefault();
+                    if (modalFocusedItemIndex >= 0 && modalFocusedItemIndex < items.length) {{
+                        const selectedItem = items[modalFocusedItemIndex];
+                        if (selectedItem) {{
+                            handlePopupItemClick(selectedItem);
+                        }}
+                    }} else if (items.length > 0) {{
+                        handlePopupItemClick(items[0]);
+                    }}
+                }} else if (e.key === "Escape") {{
+                    e.preventDefault();
+                    closeModalCollectionsPopup();
+                }}
+            }});
+
+            modalPopupSearchInput.addEventListener("input", (e) => {{
+                modalFocusedItemIndex = -1;
+                renderModalCollectionsPopupList(e.target.value);
+            }});
+        }}
+
+        // Add collection popup show click listener
+        const showAddCollBtn = document.getElementById("btn-show-add-collection-popup");
+        if (showAddCollBtn) {{
+            showAddCollBtn.addEventListener("click", (e) => {{
+                e.stopPropagation();
+                toggleModalCollectionsPopup();
+            }});
+        }}
+
+        const modalCollPlaceholder = document.getElementById("modal-collections-placeholder");
+        if (modalCollPlaceholder) {{
+            modalCollPlaceholder.addEventListener("click", (e) => {{
+                e.stopPropagation();
+                toggleModalCollectionsPopup();
+            }});
+            modalCollPlaceholder.style.cursor = "pointer";
+        }}
+
+        const modalCollectionsDoneBtn = document.getElementById("modal-collections-done-btn");
+        if (modalCollectionsDoneBtn) {{
+            modalCollectionsDoneBtn.addEventListener("click", () => {{
+                closeModalCollectionsPopup();
+            }});
+        }}
+
+        // Version Selector change listener
+        const modalVersionSelect = document.getElementById("modal-version-select");
+        if (modalVersionSelect) {{
+            modalVersionSelect.addEventListener("change", (e) => {{
+                if (!currentModalCard) return;
+                const versions = JSON.parse(currentModalCard.dataset.versions || "[]");
+                const selectedVer = versions.find(v => v.file_stem === e.target.value);
+                if (!selectedVer) return;
+
+                // — Fade out all content panels —
+                const leftScrollable = document.querySelector(".modal-left-scrollable");
+                const rightCol = document.querySelector(".modal-right");
+                const middleCol = document.querySelector(".modal-middle");
+                [leftScrollable, rightCol, middleCol].forEach(el => el && el.classList.add("modal-version-transitioning"));
+
+                setTimeout(() => {{
+                    // Update parent card select
+                    const cardSelect = currentModalCard.querySelector(".version-select");
+                    if (cardSelect && cardSelect.value !== selectedVer.file_stem) {{
+                        cardSelect.value = selectedVer.file_stem;
+                        cardSelect.dispatchEvent(new Event("change"));
+                    }}
+
+                    // Update modal preview image
+                    const imgEl = document.getElementById("modal-image");
+                    if (selectedVer.preview_image) {{
+                        imgEl.style.display = "block";
+                        imgEl.src = selectedVer.preview_image;
+                    }} else {{
+                        imgEl.style.display = "none";
+                    }}
+
+                    // Update modal description
+                    const descEl = document.getElementById("modal-description");
+                    const descPlaceholder = document.getElementById("modal-description-placeholder");
+                    if (!selectedVer.description || selectedVer.description.trim() === "") {{
+                        if (descPlaceholder) descPlaceholder.style.display = "block";
+                        if (descEl) descEl.style.display = "none";
+                    }} else {{
+                        if (descPlaceholder) descPlaceholder.style.display = "none";
+                        if (descEl) {{
+                            descEl.style.display = "block";
+                            descEl.innerHTML = selectedVer.description;
+                        }}
+                    }}
+
+                    // Update official triggers
+                    const offTrigContainer = document.getElementById("modal-official-triggers");
+                    if (offTrigContainer) {{
+                        offTrigContainer.innerHTML = selectedVer.trigger_groups_html || '<span class="text-muted" style="font-size:12px; padding: 4px;">None</span>';
+                    }}
+
+                    // Update metadata
+                    const creator = currentModalCard.dataset.creator;
+                    const creatorRow = document.getElementById("modal-creator-row");
+                    if (creatorRow) {{
+                        if (!creator || creator.trim() === "" || creator === "Unknown" || creator === "null") {{
+                            creatorRow.style.display = "none";
+                        }} else {{
+                            creatorRow.style.display = "flex";
+                            document.getElementById("modal-creator").textContent = creator;
+                        }}
+                    }}
+                    document.getElementById("modal-base-model").textContent = selectedVer.base_model || "Unknown";
+                    document.getElementById("modal-filename").textContent = selectedVer.filename;
+                    document.getElementById("modal-path").textContent = selectedVer.relative_path;
+
+                    // Update CivitAI link
+                    const civitaiLink = document.getElementById("modal-btn-civitai");
+                    if (civitaiLink) {{
+                        const modelId = selectedVer.model_id;
+                        const versionId = selectedVer.version_id;
+                        if (modelId) {{
+                            civitaiLink.style.display = "inline-flex";
+                            let url = `https://civitai.red/models/${{modelId}}`;
+                            if (versionId) url += `?modelVersionId=${{versionId}}`;
+                            civitaiLink.href = url;
+                        }} else {{
+                            civitaiLink.style.display = "none";
+                        }}
+                    }}
+
+                    // Fetch version-specific user data
+                    fetch(`/api/get_user_data?relative_path=${{encodeURIComponent(selectedVer.relative_path)}}`)
+                        .then(res => {{
+                            if (!res.ok) throw new Error("Failed to load version user data");
+                            return res.json();
+                        }})
+                        .then(userData => {{
+                            currentPersonalTriggers = userData.personal_trigger_words || [];
+                            currentCollections = userData.collections || [];
+                            currentRating = userData.rating || 0;
+                            const notes = userData.notes || "";
+                            renderRating(currentRating);
+                            renderModalCollectionChips();
+                            renderModalNotes(notes);
+                            renderPersonalTriggers();
+                            adjustModalLayout();
+                            setupAutoHideScrollbars();
+                        }})
+                        .catch(err => {{
+                            console.warn("Failed to load version user data:", err);
+                            currentPersonalTriggers = [];
+                            currentCollections = [];
+                            currentRating = 0;
+                            renderRating(0);
+                            renderModalCollectionChips();
+                            renderModalNotes("");
+                            renderPersonalTriggers();
+                            adjustModalLayout();
+                            setupAutoHideScrollbars();
+                        }})
+                        .finally(() => {{
+                            // — Fade back in after content + user data settled —
+                            [leftScrollable, rightCol, middleCol].forEach(el => el && el.classList.remove("modal-version-transitioning"));
+                        }});
+                }}, 160);
             }});
         }}
 
@@ -4336,11 +5215,53 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             filterBaseModelSelect.addEventListener("change", updateFilter);
         }}
 
+        // Add Notes placeholder trigger button
+        const addNotePlaceholderBtn = document.getElementById("btn-add-note-placeholder");
+        if (addNotePlaceholderBtn) {{
+            addNotePlaceholderBtn.addEventListener("click", () => {{
+                const textarea = document.getElementById("modal-notes");
+                const placeholder = document.getElementById("modal-notes-placeholder");
+                if (placeholder) placeholder.style.display = "none";
+                if (textarea) {{
+                    textarea.style.display = "block";
+                    textarea.focus();
+                }}
+            }});
+        }}
+
+        // Add Personal Trigger placeholder button
+        const addTrigPlaceholderBtn = document.getElementById("btn-add-trigger-placeholder");
+        if (addTrigPlaceholderBtn) {{
+            addTrigPlaceholderBtn.addEventListener("click", () => {{
+                const placeholder = document.getElementById("modal-personal-triggers-placeholder");
+                const form = document.getElementById("personal-trigger-add-form");
+                if (placeholder) placeholder.style.display = "none";
+                if (form) {{
+                    form.style.display = "flex";
+                    const input = form.querySelector("input");
+                    if (input) input.focus();
+                }}
+            }});
+        }}
+
         // Auto-save notes when textarea loses focus or is changed
         const notesTextarea = document.getElementById("modal-notes");
         if (notesTextarea) {{
             notesTextarea.addEventListener("change", autoSaveUserData);
-            notesTextarea.addEventListener("blur", autoSaveUserData);
+            notesTextarea.addEventListener("blur", () => {{
+                const textarea = document.getElementById("modal-notes");
+                const placeholder = document.getElementById("modal-notes-placeholder");
+                const val = textarea.value.trim();
+                if (val === "") {{
+                    if (placeholder) {{
+                        placeholder.style.display = "flex";
+                        placeholder.style.flexDirection = "column";
+                        placeholder.style.alignItems = "center";
+                    }}
+                    textarea.style.display = "none";
+                }}
+                autoSaveUserData();
+            }});
         }}
 
         // Open parent folder handler
@@ -4348,7 +5269,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         if (openFolderBtn) {{
             openFolderBtn.addEventListener("click", () => {{
                 if (!currentModalCard) return;
-                const path = currentModalCard.dataset.path;
+                
+                const selectVal = document.getElementById("modal-version-select").value;
+                const versions = JSON.parse(currentModalCard.dataset.versions || "[]");
+                const selectedVer = versions.find(v => v.file_stem === selectVal) || versions[0];
+                const path = selectedVer.relative_path;
                 
                 fetch("/api/open_folder", {{
                     method: "POST",
@@ -4371,6 +5296,62 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }});
         }}
 
+        // Modal delete version handler
+        const modalDeleteVersionBtn = document.getElementById("modal-btn-delete-version");
+        if (modalDeleteVersionBtn) {{
+            modalDeleteVersionBtn.addEventListener("click", () => {{
+                if (!currentModalCard) return;
+                
+                const modalVersionSelect = document.getElementById("modal-version-select");
+                if (!modalVersionSelect) return;
+                
+                const versions = JSON.parse(currentModalCard.dataset.versions || "[]");
+                const selectedVer = versions.find(v => v.file_stem === modalVersionSelect.value);
+                if (!selectedVer) return;
+                
+                const confirmMsg = `Are you sure you want to delete the model version '${{selectedVer.version_name || selectedVer.file_stem}}'?\n\nThis will permanently delete the model file:\n${{selectedVer.filename}}\n\nas well as its associated previews and metadata.`;
+                if (!confirm(confirmMsg)) return;
+                
+                fetch('/api/delete_model_version', {{
+                    method: 'POST',
+                    headers: {{
+                        'Content-Type': 'application/json'
+                    }},
+                    body: JSON.stringify({{ relative_path: selectedVer.relative_path }})
+                }})
+                .then(res => {{
+                    if (!res.ok) throw new Error("Delete failed on server.");
+                    return res.json();
+                }})
+                .then(data => {{
+                    let remainingVersions = versions.filter(v => v.file_stem !== selectedVer.file_stem);
+                    if (remainingVersions.length === 0) {{
+                        currentModalCard.remove();
+                        const idx = cards.indexOf(currentModalCard);
+                        if (idx > -1) cards.splice(idx, 1);
+                        updateFilter();
+                        closeDetailsModal();
+                        showToast("Model deleted successfully.");
+                    }} else {{
+                        currentModalCard.dataset.versions = JSON.stringify(remainingVersions);
+                        const cardSelect = currentModalCard.querySelector(".version-select");
+                        if (cardSelect) {{
+                            cardSelect.innerHTML = remainingVersions.map(v => `<option value="${{v.file_stem}}">${{v.version_name || v.file_stem}}</option>`).join("");
+                            cardSelect.value = remainingVersions[0].file_stem;
+                        }}
+                        modalVersionSelect.innerHTML = remainingVersions.map(v => `<option value="${{v.file_stem}}">${{v.version_name || v.file_stem}}</option>`).join("");
+                        modalVersionSelect.value = remainingVersions[0].file_stem;
+                        modalVersionSelect.dispatchEvent(new Event("change"));
+                        showToast("Version deleted successfully.");
+                    }}
+                }})
+                .catch(err => {{
+                    console.error("Failed to delete version:", err);
+                    alert("Failed to delete version: " + err.message);
+                }});
+            }});
+        }}
+
         // Initial setup
         const initialFavs = getFavorites();
         cards.forEach(card => {{
@@ -4387,13 +5368,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         updateBaseModelFilterOptions();
         updateFilter();
         updatePromptBuilderUI();
+        setupAutoHideScrollbars();
         loadUserDataSummary();
     </script>
 </body>
 </html>
 """
-
-
 
 # Save the gallery as a standalone HTML file.
 def save_gallery_html(entries: list[dict], output_path: Path) -> Path:

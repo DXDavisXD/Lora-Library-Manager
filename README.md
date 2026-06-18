@@ -28,7 +28,7 @@ A high-performance, stable command-line utility and responsive dark-themed web g
 ## Installation & Configuration
 
 1.  Clone or copy the application files to your local system.
-2.  Open [config.py](file:///e:/Lora-Project/Lora-Library-Manager%20v1/config.py) and configure your variables:
+2.  Open [config.py](file:///e:/Lora-Project/Lora-Library-Manager-dev/config.py) and configure your variables:
     *   `LORA_ROOT`: Absolute path to your Stable Diffusion LoRA models folder (e.g. `Path(r"E:\SD\webui-forge\models\Lora")`).
     *   `CIVITAI_API_KEY`: Your personal CivitAI API Key for accessing remote metadata.
     *   `TMP_CLEANUP_AGE_SECONDS`: Time threshold (default `3600` seconds / 1 hour) for safe startup cleanup of temporary files.
