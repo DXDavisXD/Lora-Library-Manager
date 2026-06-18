@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "LoRA Library Manager"
 VERSION = "2.0.0"
-LORA_ROOT = Path(r"E:\SD\webui-forge\models\Lora")
+LORA_ROOT = Path(r"Path to the Lora Folder")
 LORA_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".bin"}
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
