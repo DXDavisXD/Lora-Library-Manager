@@ -374,17 +374,19 @@ def build_trigger_groups_html(trigger_words: list, trigger_groups: list) -> str:
     for group in trigger_groups:
         title = group.get("title", "Trigger Words")
         words = group.get("words", [])
+        words_count = len([w for w in words if w.strip()])
         words_text = ", ".join(words)
         
         list_items = "".join(f"<li>{escape_text(w)}</li>" for w in words if w.strip())
         esc_title = escape_text(title)
         esc_words_text = escape_text(words_text)
+        title_display = f"{esc_title} ({words_count})"
         
         groups_html += f"""
         <div class="trigger-group" data-group-words="{esc_words_text}">
             <div class="trigger-group-header" role="button" aria-expanded="false" tabindex="0" aria-label="Toggle {esc_title} triggers">
                 <span class="trigger-group-arrow">▶</span>
-                <span class="trigger-group-title">{esc_title}</span>
+                <span class="trigger-group-title">{title_display}</span>
                 <button class="btn-copy-group" aria-label="Copy {esc_title} triggers" type="button" tabindex="0">
                     <svg class="btn-icon copy-icon-normal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -510,6 +512,9 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
             "mtime": ver["mtime"]
         })
         
+    t_groups = latest_ver.get("trigger_groups", [])
+    t_groups_count = 1 if (not t_groups and trigger_words) else len(t_groups)
+
     versions_json = json.dumps(versions_serialized)
     trigger_section_html = f"""
         <div class="trigger-groups-container">
@@ -533,6 +538,8 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                   data-tags="{escape_text(json.dumps(group.get('tags', [])))}"
                   data-official-triggers="{escape_text(json.dumps(trigger_words))}"
                   data-versions="{escape_text(versions_json)}"
+                  data-collections="[]"
+                  data-rating="0"
                   data-favorite="false">
             <div class="preview">
                 {image_html}
@@ -550,11 +557,15 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                 
                 {version_selector_html}
                 
-                <p class="label">Trigger words</p>
-                {trigger_section_html}
-                
+                <div class="card-trigger-section">
+                    <p class="label card-trigger-label">Trigger words ({t_groups_count})</p>
+                    {trigger_section_html}
+                </div>
+
                 <p class="label">Description</p>
-                <p class="description">{escape_text(desc_clean or "No description available.")}</p>
+                <div class="description-wrapper" title="Click to view full details">
+                    <p class="description">{escape_text(desc_clean or "No description available.")}</p>
+                </div>
                 
                 <div class="card-footer">
                     <button class="btn-copy" aria-label="Copy LoRA tag" type="button" tabindex="0">
@@ -1047,6 +1058,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-direction: column;
             box-shadow: var(--shadow);
             transition: var(--transition);
+            height: 690px; /* Fixed height so all cards are uniform */
         }}
 
         .card[hidden] {{
@@ -1186,7 +1198,26 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             padding: 16px;
             display: flex;
             flex-direction: column;
-            flex-grow: 1;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }}
+
+        /* Wrapper that sits between version selector and description — natural height */
+        .card-trigger-section {{
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin-bottom: 0;
+        }}
+
+        /* Inside a card, the trigger container scrolls when it has many items */
+        .card .card-trigger-section .trigger-groups-container {{
+            min-height: 0;
+            max-height: 130px; /* ~3 trigger rows before scroll kicks in */
+            overflow-y: auto;
+            margin-bottom: 0;
         }}
 
         h2 {{
@@ -1316,14 +1347,37 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             font-size: 12px;
         }}
 
+        .description-wrapper {{
+            position: relative;
+            flex: 1;          /* fills remaining space between trigger section and footer */
+            min-height: 0;
+            overflow: hidden;
+            cursor: pointer;
+            margin-bottom: 2px;
+        }}
+
+        /* Fade only shown when text actually overflows */
+        .description-wrapper.overflowing::after {{
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 32px;
+            background: linear-gradient(to bottom, transparent, var(--panel));
+            pointer-events: none;
+        }}
+
+        .description-wrapper.overflowing:hover::after {{
+            background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--panel) 85%, var(--accent) 15%));
+        }}
+
         .description {{
             margin: 0;
             font-size: 13px;
             color: var(--text-muted);
             line-height: 1.5;
-            max-height: 90px;
-            overflow-y: auto;
-            padding-right: 4px;
+            overflow: hidden;
         }}
 
         .card-footer {{
@@ -1619,7 +1673,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .prompt-builder-content {{
             padding: 16px 24px 24px 24px;
-            max-height: 250px;
+            max-height: 420px;
             overflow-y: auto;
         }}
 
@@ -1695,6 +1749,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         .btn-action-primary, .btn-action-secondary {{
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
             padding: 8px 16px;
             font-size: 13px;
@@ -1749,6 +1804,98 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             background: rgba(30, 41, 59, 0.8);
             border-color: rgba(255, 255, 255, 0.2);
             color: white;
+        }}
+
+        /* Hover Preview Tooltip */
+        .hover-preview-card {{
+            position: absolute;
+            background: rgba(17, 19, 28, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 16px;
+            width: 280px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            pointer-events: none;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            opacity: 0;
+            transform: scale(0.96);
+            display: none;
+        }}
+        
+        .hover-preview-card.visible {{
+            opacity: 1;
+            transform: scale(1);
+        }}
+        
+        .hover-preview-title {{
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.4;
+            word-break: break-word;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 8px;
+        }}
+        
+        .hover-preview-row {{
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 12px;
+            line-height: 1.4;
+        }}
+        
+        .hover-preview-row:last-child {{
+            margin-bottom: 0;
+        }}
+        
+        .hover-preview-label {{
+            color: var(--text-muted);
+            font-weight: 500;
+        }}
+        
+        .hover-preview-value {{
+            color: var(--text);
+            font-weight: 600;
+            text-align: right;
+            max-width: 160px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+
+        /* Prompt Builder History & Presets list styling */
+        .prompt-extras-list::-webkit-scrollbar {{
+            width: 4px;
+        }}
+        .prompt-extras-list::-webkit-scrollbar-track {{
+            background: transparent;
+        }}
+        .prompt-extras-list::-webkit-scrollbar-thumb {{
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }}
+        .prompt-extras-list::-webkit-scrollbar-thumb:hover {{
+            background: rgba(255, 255, 255, 0.2);
+        }}
+        
+        .preset-item, .history-item {{
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 4px;
+            padding: 6px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: var(--transition);
+        }}
+        
+        .preset-item:hover, .history-item:hover {{
+            background: rgba(99, 102, 241, 0.08) !important;
+            border-color: rgba(99, 102, 241, 0.2) !important;
         }}
 
         @media (max-width: 1024px) {{
@@ -1999,6 +2146,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             align-items: center;
             justify-content: center;
             max-height: 480px;
+            margin: auto 0;
         }}
 
         .modal-preview-container img {{
@@ -2008,6 +2156,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             width: auto;
             display: block;
             object-fit: contain;
+            margin: 0 auto;
         }}        /* Auto-Hiding Scrollbar Overlay styles for specific components */
         #modal-title,
         .modal-left-scrollable,
@@ -2237,23 +2386,50 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .modal-section h3 {{
             margin: 0;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 700;
-            color: var(--text-muted);
+            color: #818cf8;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.08em;
         }}
 
         /* Description Box */
         .modal-description-text {{
             font-size: 13px;
             color: var(--text-muted);
-            background: rgba(255, 255, 255, 0.01);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px 14px;
             line-height: 1.6;
             word-break: break-word;
+            overflow-y: auto;
+            padding-right: 6px;
+        }}
+
+        /* In 3-column layout the description section grows to fill leftover space */
+        .modal-body.three-column .modal-middle #modal-section-description {{
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .modal-body.three-column .modal-middle #modal-section-description .modal-description-text {{
+            flex: 1;
+            min-height: 0;
+            height: auto;
+        }}
+
+        /* Fade-out gradient at the bottom of the description when overflowing */
+        .modal-body.three-column .modal-middle #modal-section-description::after {{
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 48px;
+            background: linear-gradient(to bottom, transparent, rgba(17, 19, 28, 0.95));
+            pointer-events: none;
+            border-radius: 0 0 8px 8px;
         }}
 
         /* Tags Container */
@@ -2329,35 +2505,41 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border: 1px solid rgba(99, 102, 241, 0.3);
             color: #a5b4fc;
             font-size: 12px;
-            padding: 4px 10px;
+            padding: 0;
             border-radius: 6px;
             display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            align-items: stretch;
+            gap: 0;
             font-weight: 600;
             cursor: default;
+            overflow: hidden;
+            user-select: none;
+        }}
+
+        .collection-chip-modal-text {{
+            padding: 4px 10px;
+            display: inline-flex;
+            align-items: center;
         }}
 
         .collection-chip-modal .btn-remove-chip {{
             background: transparent;
             border: none;
-            color: #a5b4fc;
+            color: rgba(165, 180, 252, 0.6);
             cursor: pointer;
-            font-weight: bold;
-            font-size: 12px;
-            padding: 0;
+            font-size: 11px;
+            padding: 0 10px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
+            border-left: 1px solid rgba(99, 102, 241, 0.3);
             transition: var(--transition);
         }}
 
         .collection-chip-modal .btn-remove-chip:hover {{
             background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
+            color: #f87171 !important;
+            border-left-color: rgba(239, 68, 68, 0.3);
         }}
 
         /* Input forms */
@@ -2440,26 +2622,47 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border: 1px solid rgba(16, 185, 129, 0.2);
             color: #34d399;
             font-size: 11px;
-            padding: 4px 10px;
+            padding: 0;
             border-radius: 6px;
             font-family: monospace;
             display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
+            align-items: stretch;
+            gap: 0;
+            cursor: copy;
             transition: var(--transition);
+            user-select: none;
+            overflow: hidden;
         }}
 
         .trigger-tag-edit:hover {{
-            background: rgba(239, 68, 68, 0.12);
-            border-color: rgba(239, 68, 68, 0.3);
-            color: #ef4444;
+            background: rgba(16, 185, 129, 0.12);
+            border-color: rgba(16, 185, 129, 0.4);
             transform: translateY(-1px);
         }}
 
-        .trigger-tag-edit::after {{
-            content: "×";
+        .trigger-tag-edit-text {{
+            padding: 4px 10px;
+            display: inline-flex;
+            align-items: center;
+        }}
+
+        .trigger-tag-edit-remove {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 10px;
+            cursor: pointer;
             font-weight: bold;
+            font-size: 14px;
+            color: rgba(52, 211, 153, 0.6);
+            border-left: 1px solid rgba(16, 185, 129, 0.25);
+            transition: var(--transition);
+        }}
+
+        .trigger-tag-edit-remove:hover {{
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171 !important;
+            border-left-color: rgba(239, 68, 68, 0.3);
         }}
 
         .grid-2-col {{
@@ -2673,6 +2876,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             max-width: none;
         }}
 
+        /* In three-column mode only, description section should flex-grow (override the wildcard flex-shrink:0) */
+        .modal-body.three-column .modal-middle #modal-section-description {{
+            flex-shrink: 1;
+        }}
+
         .modal-left-scrollable > *,
         .modal-middle > *,
         .modal-right > * {{
@@ -2875,10 +3083,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 <!-- Right Side: Edit Panel -->
                 <div class="modal-right">
                     <!-- Description Section -->
-                    <div class="modal-section" id="modal-section-description" style="margin-top: 0; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;">
+                    <div class="modal-section" id="modal-section-description" style="margin-top: 0;">
                         <h3>Description</h3>
-                        <div id="modal-description-placeholder" class="empty-placeholder" style="display: none; height: 150px; justify-content: center; align-items: center; border: 1px dashed var(--border); border-radius: 8px; box-sizing: border-box; padding: 12px;">— No description available —</div>
-                        <div id="modal-description" class="modal-description-text" style="height: 150px; overflow-y: auto; resize: none; box-sizing: border-box;"></div>
+                        <div id="modal-description-placeholder" class="empty-placeholder" style="display: none; padding: 24px 0; color: var(--text-muted); font-size: 13px;">— No description available —</div>
+                        <div id="modal-description" class="modal-description-text" style="display: none;"></div>
                     </div>
 
                     <!-- Tags Section (dynamic display) -->
@@ -2955,7 +3163,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     <!-- Triggers stacked vertically (No two column layout) -->
                     <div class="modal-section" style="display: flex; flex-direction: column; gap: 16px;">
                         <div>
-                            <h3>Official Triggers</h3>
+                            <h3 id="modal-official-triggers-title">Official Triggers</h3>
+                            <div id="modal-trigger-search-container" style="display: none; margin-top: 8px; margin-bottom: 4px;">
+                                <input type="text" id="modal-trigger-search" placeholder="🔍 Search triggers..." style="width: 100%; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none;">
+                            </div>
                             <div id="modal-official-triggers" class="trigger-groups-container" style="max-height: 280px; border: none; background: transparent; padding: 0; margin-top: 8px;"></div>
                         </div>
                         <div>
@@ -3039,6 +3250,33 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         <span class="btn-text">Clear All</span>
                     </button>
                 </div>
+                
+                <!-- Divider -->
+                <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 12px 0;"></div>
+                
+                <!-- History & Presets Panel -->
+                <div class="prompt-extras-container" style="display: flex; gap: 16px; min-height: 120px; max-height: 200px;">
+                    <!-- Presets Column -->
+                    <div class="prompt-extras-column" style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span style="font-size: 11px; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 0.05em;">Prompt Presets</span>
+                            <button id="btn-save-preset" class="btn-mini" type="button" style="padding: 2px 8px; font-size: 10px; height: auto; line-height: normal;">+ Save Current</button>
+                        </div>
+                        <div id="prompt-presets-list" class="prompt-extras-list" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+                            <!-- populated dynamically -->
+                        </div>
+                    </div>
+                    
+                    <!-- History Column -->
+                    <div class="prompt-extras-column" style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
+                        <div style="margin-bottom: 6px;">
+                            <span style="font-size: 11px; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 0.05em;">Prompt History</span>
+                        </div>
+                        <div id="prompt-history-list" class="prompt-extras-list" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+                            <!-- populated dynamically -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -3049,6 +3287,24 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         let currentWeight = localStorage.getItem(WEIGHT_KEY) || "1.0";
         let activeCollection = "Library"; // Default state
+
+        const SYSTEM_COLLECTIONS = [
+            {{
+                name: "Library",
+                icon: "📚",
+                matches: (card, collections, isFav) => true
+            }},
+            {{
+                name: "Favorites",
+                icon: "⭐",
+                matches: (card, collections, isFav) => isFav
+            }},
+            {{
+                name: "Uncategorized",
+                icon: "🗂️",
+                matches: (card, collections, isFav) => collections.length === 0
+            }}
+        ];
 
         const searchInput = document.getElementById("search");
         const cards = Array.from(document.querySelectorAll(".card"));
@@ -3104,24 +3360,27 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             
             const filterBaseModelSelect = document.getElementById("filter-base-model");
             const selectedBaseModel = filterBaseModelSelect ? filterBaseModelSelect.value : "";
+            const favsList = getFavorites();
+            const sysColl = SYSTEM_COLLECTIONS.find(sc => sc.name === activeCollection);
             
             let visible = 0;
 
             for (const card of cards) {{
                 const matchesSearch = card.dataset.search.includes(query);
                 
-                // Matches favorites if activeCollection is "Favorites"
-                const matchesFav = (activeCollection !== "Favorites") || card.dataset.favorite === "true";
+                const isFav = card.dataset.favorite === "true" || favsList.includes(card.dataset.hash || card.dataset.path);
+                let cardColls = [];
+                try {{
+                    cardColls = JSON.parse(card.dataset.collections || "[]");
+                }} catch (e) {{
+                    cardColls = [];
+                }}
                 
                 let matchesCollection = true;
-                if (activeCollection !== "Library" && activeCollection !== "Favorites") {{
-                    try {{
-                        const collections = JSON.parse(card.dataset.collections || "[]");
-                        // Case-insensitive collection check
-                        matchesCollection = collections.some(c => c.toLowerCase() === activeCollection.toLowerCase());
-                    }} catch (e) {{
-                        matchesCollection = false;
-                    }}
+                if (sysColl) {{
+                    matchesCollection = sysColl.matches(card, cardColls, isFav);
+                }} else {{
+                    matchesCollection = cardColls.some(c => c.toLowerCase() === activeCollection.toLowerCase());
                 }}
                 
                 let matchesBaseModel = true;
@@ -3130,7 +3389,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     matchesBaseModel = (cardBaseModel === selectedBaseModel);
                 }}
                 
-                const matches = matchesSearch && matchesFav && matchesCollection && matchesBaseModel;
+                const matches = matchesSearch && matchesCollection && matchesBaseModel;
                 card.hidden = !matches;
 
                 if (matches) {{
@@ -3292,12 +3551,23 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             const triggerContainer = card.querySelector(".trigger-groups-container");
             if (triggerContainer) {{
                 triggerContainer.innerHTML = selectedVer.trigger_groups_html || '<p class="triggers">None found</p>';
+                const labelEl = card.querySelector(".card-trigger-label");
+                if (labelEl) {{
+                    const groupCount = triggerContainer.querySelectorAll(".trigger-group").length;
+                    labelEl.textContent = `Trigger words (${{groupCount}})`;
+                }}
             }}
             
             // Update Description display
             const descEl = card.querySelector(".description");
             if (descEl) {{
                 descEl.textContent = selectedVer.description || "No description available.";
+            }}
+            // Re-evaluate overflow fade for this card's description
+            const wrapper = card.querySelector(".description-wrapper");
+            if (wrapper) {{
+                const d = wrapper.querySelector(".description");
+                wrapper.classList.toggle("overflowing", d && d.scrollHeight > wrapper.clientHeight + 2);
             }}
             
             // Dynamic base models dropdown and active filters updates on version changes
@@ -3446,6 +3716,201 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         // Prompt Builder State & Helpers
         const PROMPT_KEY = "lora_gallery_prompt_builder";
+        const HISTORY_KEY = "lora_gallery_prompt_history";
+        const PRESETS_KEY = "lora_gallery_prompt_presets";
+        
+        function getPromptHistory() {{
+            try {{
+                return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+            }} catch(e) {{
+                return [];
+            }}
+        }}
+        
+        function savePromptHistory(history) {{
+            localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+        }}
+        
+        function getPromptPresets() {{
+            try {{
+                const presets = JSON.parse(localStorage.getItem(PRESETS_KEY)) || [];
+                let changed = false;
+                const now = Date.now();
+                presets.forEach(p => {{
+                    if (!p.created_at) {{
+                        p.created_at = now;
+                        changed = true;
+                    }}
+                    if (!p.last_used) {{
+                        p.last_used = p.created_at;
+                        changed = true;
+                    }}
+                }});
+                if (changed) {{
+                    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+                }}
+                return presets;
+            }} catch(e) {{
+                return [];
+            }}
+        }}
+        
+        function savePromptPresets(presets) {{
+            localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+        }}
+
+        function getReadablePromptText(tokens) {{
+            return tokens.map(token => {{
+                const match = token.match(/<lora:([^:]+):[^>]+>/);
+                if (match && match[1]) {{
+                    const stem = match[1];
+                    return stem.split(/[-_]+/)
+                               .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                               .join(" ");
+                }}
+                return token;
+            }}).join(" + ");
+        }}
+        
+        function renderPromptHistoryUI() {{
+            const container = document.getElementById("prompt-history-list");
+            if (!container) return;
+            container.innerHTML = "";
+            
+            const history = getPromptHistory();
+            if (history.length === 0) {{
+                container.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 12px 0;">No history yet.</div>';
+                return;
+            }}
+            
+            history.forEach((tokens, idx) => {{
+                const div = document.createElement("div");
+                div.className = "history-item";
+                div.title = tokens.join(" ");
+                div.textContent = getReadablePromptText(tokens);
+                div.addEventListener("click", () => {{
+                    savePromptTokens(tokens);
+                    updatePromptBuilderUI();
+                }});
+                container.appendChild(div);
+            }});
+        }}
+        
+        function renderPromptPresetsUI() {{
+            const container = document.getElementById("prompt-presets-list");
+            if (!container) return;
+            container.innerHTML = "";
+            
+            const presets = getPromptPresets();
+            const presetsWithIndex = presets.map((p, idx) => ({{ ...p, originalIndex: idx }}));
+            const sortedPresets = presetsWithIndex.sort((a, b) => (b.last_used || 0) - (a.last_used || 0));
+            
+            if (sortedPresets.length === 0) {{
+                container.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 12px 0;">No presets yet.</div>';
+                return;
+            }}
+            
+            sortedPresets.forEach((preset) => {{
+                const originalIndex = preset.originalIndex;
+                
+                const div = document.createElement("div");
+                div.className = "preset-item";
+                div.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px;";
+                div.addEventListener("click", (e) => {{
+                    if (e.target.closest(".btn-preset-rename") || e.target.closest(".btn-preset-delete")) return;
+                    applyPreset(originalIndex);
+                }});
+                
+                const nameSpan = document.createElement("span");
+                nameSpan.className = "preset-name";
+                nameSpan.style.cssText = "flex-grow: 1; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;";
+                nameSpan.textContent = preset.name;
+                nameSpan.title = preset.tokens.join(" ");
+                
+                const actionsDiv = document.createElement("div");
+                actionsDiv.style.cssText = "display: flex; gap: 6px; flex-shrink: 0;";
+                
+                const renameBtn = document.createElement("button");
+                renameBtn.type = "button";
+                renameBtn.className = "btn-preset-rename";
+                renameBtn.innerHTML = "&#9998;";
+                renameBtn.title = "Rename Preset";
+                renameBtn.style.cssText = "background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 2px; font-size: 12px; line-height: 1;";
+                renameBtn.addEventListener("click", (e) => {{
+                    e.stopPropagation();
+                    renamePreset(originalIndex);
+                }});
+                
+                const deleteBtn = document.createElement("button");
+                deleteBtn.type = "button";
+                deleteBtn.className = "btn-preset-delete";
+                deleteBtn.innerHTML = "&#128465;";
+                deleteBtn.title = "Delete Preset";
+                deleteBtn.style.cssText = "background: transparent; border: none; color: #f87171; cursor: pointer; padding: 2px; font-size: 12px; line-height: 1;";
+                deleteBtn.addEventListener("click", (e) => {{
+                    e.stopPropagation();
+                    deletePreset(originalIndex);
+                }});
+                
+                actionsDiv.appendChild(renameBtn);
+                actionsDiv.appendChild(deleteBtn);
+                
+                div.appendChild(nameSpan);
+                div.appendChild(actionsDiv);
+                container.appendChild(div);
+            }});
+        }}
+        
+        function renamePreset(index) {{
+            const presets = getPromptPresets();
+            const preset = presets[index];
+            if (!preset) return;
+            
+            const newName = prompt("Rename preset:", preset.name);
+            if (!newName || newName.trim() === "") return;
+            
+            preset.name = newName.trim();
+            savePromptPresets(presets);
+            renderPromptPresetsUI();
+        }}
+        
+        function deletePreset(index) {{
+            const presets = getPromptPresets();
+            presets.splice(index, 1);
+            savePromptPresets(presets);
+            renderPromptPresetsUI();
+        }}
+        
+        function applyPreset(index) {{
+            const presets = getPromptPresets();
+            const preset = presets[index];
+            if (!preset) return;
+            
+            preset.last_used = Date.now();
+            savePromptPresets(presets);
+            
+            const currentTokens = getPromptTokens();
+            const mergedTokens = [...currentTokens];
+            
+            preset.tokens.forEach(token => {{
+                const matchNew = token.match(/<lora:([^:]+):[^>]+>/);
+                if (matchNew && matchNew[1]) {{
+                    const newStem = matchNew[1];
+                    const exists = currentTokens.some(t => {{
+                        const m = t.match(/<lora:([^:]+):[^>]+>/);
+                        return m && m[1] === newStem;
+                    }});
+                    if (!exists) {{
+                        mergedTokens.push(token);
+                    }}
+                }} else if (!mergedTokens.includes(token)) {{
+                    mergedTokens.push(token);
+                }}
+            }});
+            
+            savePromptTokens(mergedTokens);
+            updatePromptBuilderUI();
+        }}
 
         function getPromptTokens() {{
             try {{
@@ -3494,6 +3959,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     container.appendChild(tokenSpan);
                 }});
             }}
+            
+            // Refresh history and presets views
+            renderPromptHistoryUI();
+            renderPromptPresetsUI();
         }}
 
         function addToken(stem) {{
@@ -3590,10 +4059,46 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     btn.style.background = "";
                     btn.style.borderColor = "";
                 }}, 1500);
+                
+                // Add to history
+                let history = getPromptHistory();
+                const promptStr = JSON.stringify(tokens);
+                history = history.filter(h => JSON.stringify(h) !== promptStr);
+                history.unshift(tokens);
+                if (history.length > 20) {{
+                    history = history.slice(0, 20);
+                }}
+                savePromptHistory(history);
+                renderPromptHistoryUI();
             }}).catch(err => {{
                 console.error("Prompt copy failed:", err);
             }});
         }});
+        
+        // Save Preset Button Handler
+        const savePresetBtn = document.getElementById("btn-save-preset");
+        if (savePresetBtn) {{
+            savePresetBtn.addEventListener("click", () => {{
+                const tokens = getPromptTokens();
+                if (tokens.length === 0) {{
+                    alert("Prompt builder is empty. Add some LoRAs first!");
+                    return;
+                }}
+                const name = prompt("Enter a name for this preset:");
+                if (!name || name.trim() === "") return;
+                
+                const presets = getPromptPresets();
+                const now = Date.now();
+                presets.push({{
+                    name: name.trim(),
+                    tokens: tokens,
+                    created_at: now,
+                    last_used: now
+                }});
+                savePromptPresets(presets);
+                renderPromptPresetsUI();
+            }});
+        }}
 
         // Double Click Preview Handler (Copy trigger words)
         grid.addEventListener("dblclick", (e) => {{
@@ -3790,6 +4295,23 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 const offTrigContainer = document.getElementById("modal-official-triggers");
                 if (offTrigContainer) {{
                     offTrigContainer.innerHTML = selectedVer.trigger_groups_html || '<span class="text-muted" style="font-size:12px; padding: 4px;">None</span>';
+                    
+                    const groupCount = offTrigContainer.querySelectorAll(".trigger-group").length;
+                    const titleEl = document.getElementById("modal-official-triggers-title");
+                    if (titleEl) {{
+                        titleEl.textContent = `Official Triggers (${{groupCount}})`;
+                    }}
+                    
+                    const searchContainer = document.getElementById("modal-trigger-search-container");
+                    const searchInput = document.getElementById("modal-trigger-search");
+                    if (searchContainer) {{
+                        if (groupCount > 3) {{
+                            searchContainer.style.display = "block";
+                            if (searchInput) searchInput.value = "";
+                        }} else {{
+                            searchContainer.style.display = "none";
+                        }}
+                    }}
                 }}
             }}
 
@@ -3896,12 +4418,38 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 currentPersonalTriggers.forEach((trig, idx) => {{
                     const span = document.createElement("span");
                     span.className = "trigger-tag-edit";
-                    span.textContent = trig;
-                    span.addEventListener("click", () => {{
+                    span.title = "Click to copy trigger";
+                    
+                    const textSpan = document.createElement("span");
+                    textSpan.className = "trigger-tag-edit-text";
+                    textSpan.textContent = trig;
+                    
+                    const removeSpan = document.createElement("span");
+                    removeSpan.className = "trigger-tag-edit-remove";
+                    removeSpan.title = "Delete trigger";
+                    removeSpan.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; display: block;">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    `;
+                    
+                    span.addEventListener("click", (e) => {{
+                        if (e.target.closest(".trigger-tag-edit-remove")) return;
+                        navigator.clipboard.writeText(trig).then(() => {{
+                            showToast("Trigger copied!");
+                        }});
+                    }});
+                    
+                    removeSpan.addEventListener("click", (e) => {{
+                        e.stopPropagation();
                         currentPersonalTriggers.splice(idx, 1);
                         renderPersonalTriggers();
                         autoSaveUserData();
                     }});
+                    
+                    span.appendChild(textSpan);
+                    span.appendChild(removeSpan);
                     container.appendChild(span);
                 }});
             }}
@@ -4050,8 +4598,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     const chip = document.createElement("span");
                     chip.className = "collection-chip-modal";
                     chip.innerHTML = `
-                        <span>${{escapeHTML(name)}}</span>
-                        <button class="btn-remove-chip" type="button" aria-label="Remove collection ${{escapeHTML(name)}}">&times;</button>
+                        <span class="collection-chip-modal-text">${{escapeHTML(name)}}</span>
+                        <button class="btn-remove-chip" type="button" aria-label="Remove collection ${{escapeHTML(name)}}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; display: block;">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
                     `;
                     chip.querySelector(".btn-remove-chip").addEventListener("click", (e) => {{
                         e.stopPropagation();
@@ -4406,6 +4959,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             listContainer.innerHTML = "";
             
             const lowerFilter = filterText.trim().toLowerCase();
+            const counts = getCollectionCounts();
             
             // 1. Get filtered list of Recently Used collections
             const filteredRecents = recentCollections.filter(c => 
@@ -4428,11 +4982,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     const isActive = currentCollections.includes(name);
                     const check = isActive ? "✓" : "";
                     const activeClass = isActive ? "active" : "";
+                    const count = counts[name] || 0;
                     html += `
                         <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                             <div style="display: flex; align-items: center; min-width: 0; flex: 1;">
                                 <span class="popup-item-check">${{check}}</span>
-                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}}</span>
+                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}} (${{count}})</span>
                             </div>
                             <button class="btn-delete-collection-popup" type="button" aria-label="Delete collection globally" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
                         </div>
@@ -4450,11 +5005,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     const isActive = currentCollections.includes(name);
                     const check = isActive ? "✓" : "";
                     const activeClass = isActive ? "active" : "";
+                    const count = counts[name] || 0;
                     html += `
                         <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                             <div style="display: flex; align-items: center; min-width: 0; flex: 1;">
                                 <span class="popup-item-check">${{check}}</span>
-                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}}</span>
+                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}} (${{count}})</span>
                             </div>
                             <button class="btn-delete-collection-popup" type="button" aria-label="Delete collection globally" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
                         </div>
@@ -4505,6 +5061,47 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             updateModalPopupFocus();
         }}
 
+        function getCollectionCounts() {{
+            const counts = {{}};
+            SYSTEM_COLLECTIONS.forEach(sc => {{
+                counts[sc.name] = 0;
+            }});
+            
+            const favsList = getFavorites();
+            
+            cards.forEach(card => {{
+                let isFav = false;
+                if (currentModalCard && card === currentModalCard) {{
+                    isFav = currentRating > 0 || favsList.includes(card.dataset.hash || card.dataset.path);
+                }} else {{
+                    isFav = card.dataset.favorite === "true" || favsList.includes(card.dataset.hash || card.dataset.path);
+                }}
+                
+                let cardColls = [];
+                if (currentModalCard && card === currentModalCard) {{
+                    cardColls = currentCollections;
+                }} else {{
+                    try {{
+                        cardColls = JSON.parse(card.dataset.collections || "[]");
+                    }} catch(e) {{
+                        cardColls = [];
+                    }}
+                }}
+                
+                SYSTEM_COLLECTIONS.forEach(sc => {{
+                    if (sc.matches(card, cardColls, isFav)) {{
+                        counts[sc.name] = (counts[sc.name] || 0) + 1;
+                    }}
+                }});
+                
+                cardColls.forEach(c => {{
+                    counts[c] = (counts[c] || 0) + 1;
+                }});
+            }});
+            
+            return counts;
+        }}
+
         // Render collections in the searchable toolbar filter popup list
         function renderToolbarCollectionsPopupList(filterText = "") {{
             const listContainer = document.getElementById("popup-collections-list");
@@ -4512,12 +5109,14 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             listContainer.innerHTML = "";
             
             const lowerFilter = filterText.trim().toLowerCase();
+            const counts = getCollectionCounts();
             
-            // Pinned virtual collections
-            const virtuals = [
-                {{ name: "Library", icon: "📚" }},
-                {{ name: "Favorites", icon: "⭐" }}
-            ];
+            // System collections
+            const virtuals = SYSTEM_COLLECTIONS.map(sc => ({{
+                name: sc.name,
+                icon: sc.icon,
+                countKey: sc.name
+            }}));
             
             let html = "";
             let itemIndex = 0;
@@ -4527,10 +5126,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 if (item.name.toLowerCase().includes(lowerFilter)) {{
                     const isActive = activeCollection === item.name;
                     const activeClass = isActive ? "active" : "";
+                    const count = counts[item.countKey] || 0;
                     html += `
                         <div class="popup-item ${{activeClass}}" data-name="${{item.name}}" data-index="${{itemIndex++}}">
                             <span class="popup-item-icon" style="margin-right: 8px;">${{item.icon}}</span>
-                            <span class="popup-item-name">${{item.name}}</span>
+                            <span class="popup-item-name">${{item.name}} (${{count}})</span>
                         </div>
                     `;
                 }}
@@ -4550,10 +5150,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 filteredCollections.forEach(name => {{
                     const isActive = activeCollection === name;
                     const activeClass = isActive ? "active" : "";
+                    const count = counts[name] || 0;
                     html += `
                         <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}">
                             <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
-                            <span class="popup-item-name">${{escapeHTML(name)}}</span>
+                            <span class="popup-item-name">${{escapeHTML(name)}} (${{count}})</span>
                         </div>
                     `;
                 }});
@@ -4670,8 +5271,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             const oldClear = chip.querySelector(".chip-clear");
             if (oldClear) oldClear.remove();
 
+            const sysColl = SYSTEM_COLLECTIONS.find(sc => sc.name === activeCollection);
             if (activeCollection === "Library") {{
-                iconSpan.textContent = "📚";
+                iconSpan.textContent = sysColl ? sysColl.icon : "📚";
                 textSpan.textContent = "Library";
                 
                 const arrowSpan = document.createElement("span");
@@ -4681,9 +5283,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }} else {{
                 chip.classList.add("active-filter");
                 
-                if (activeCollection === "Favorites") {{
-                    iconSpan.textContent = "⭐";
-                    textSpan.textContent = "Favorites";
+                if (sysColl) {{
+                    iconSpan.textContent = sysColl.icon;
+                    textSpan.textContent = sysColl.name;
                 }} else {{
                     iconSpan.textContent = "📁";
                     textSpan.textContent = activeCollection;
@@ -4711,7 +5313,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             renderToolbarCollectionsPopupList(popupSearchInput ? popupSearchInput.value : "");
             
             // Check if activeCollection is still valid (e.g. if it was deleted)
-            if (activeCollection !== "Library" && activeCollection !== "Favorites" && !globalCollections.includes(activeCollection)) {{
+            const isSystem = SYSTEM_COLLECTIONS.some(sc => sc.name === activeCollection);
+            if (!isSystem && !globalCollections.includes(activeCollection)) {{
                 activeCollection = "Library";
             }}
             
@@ -4971,9 +5574,69 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }});
         }});
 
+        // Bind Details clicks on description wrapper (fade-out area → open modal)
+        grid.addEventListener("click", (e) => {{
+            const wrapper = e.target.closest(".description-wrapper");
+            if (!wrapper) return;
+            const card = wrapper.closest(".card");
+            if (!card) return;
+            const path = card.dataset.path;
+            fetch(`/api/get_user_data?relative_path=${{encodeURIComponent(path)}}`)
+                .then(res => {{
+                    if (!res.ok) throw new Error("Failed to load user data sidecar.");
+                    return res.json();
+                }})
+                .then(userData => {{ openDetailsModal(card, userData); }})
+                .catch(() => {{
+                    openDetailsModal(card, {{ personal_trigger_words: [], notes: "", rating: 0, collections: [] }});
+                }});
+        }});
+
         // Event Listeners for controls
         searchInput.addEventListener("input", updateFilter);
         sortSelect.addEventListener("change", performSort);
+        
+        // Live search inside Details Modal official triggers
+        const triggerSearchInput = document.getElementById("modal-trigger-search");
+        if (triggerSearchInput) {{
+            triggerSearchInput.addEventListener("input", (e) => {{
+                const query = e.target.value.toLowerCase().trim();
+                const container = document.getElementById("modal-official-triggers");
+                if (!container) return;
+                
+                const groups = container.querySelectorAll(".trigger-group");
+                let visibleCount = 0;
+                
+                groups.forEach(group => {{
+                    const titleEl = group.querySelector(".trigger-group-title");
+                    if (!titleEl) return;
+                    
+                    const titleText = titleEl.textContent.toLowerCase();
+                    if (titleText.includes(query)) {{
+                        group.style.display = "";
+                        visibleCount++;
+                    }} else {{
+                        group.style.display = "none";
+                    }}
+                }});
+                
+                // Show/hide "No matching trigger groups found."
+                let noMatchMessage = container.querySelector(".no-match-triggers");
+                if (visibleCount === 0 && groups.length > 0) {{
+                    if (!noMatchMessage) {{
+                        noMatchMessage = document.createElement("p");
+                        noMatchMessage.className = "no-match-triggers text-muted";
+                        noMatchMessage.style.cssText = "font-size: 13px; text-align: center; padding: 16px 0; margin: 0;";
+                        noMatchMessage.textContent = "No matching trigger groups found.";
+                        container.appendChild(noMatchMessage);
+                    }}
+                }} else {{
+                    if (noMatchMessage) {{
+                        noMatchMessage.remove();
+                    }}
+                }}
+            }});
+        }}
         
         // Collection chip click toggles the popup
         const chip = document.getElementById("collection-chip");
@@ -5139,6 +5802,23 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     const offTrigContainer = document.getElementById("modal-official-triggers");
                     if (offTrigContainer) {{
                         offTrigContainer.innerHTML = selectedVer.trigger_groups_html || '<span class="text-muted" style="font-size:12px; padding: 4px;">None</span>';
+                        
+                        const groupCount = offTrigContainer.querySelectorAll(".trigger-group").length;
+                        const titleEl = document.getElementById("modal-official-triggers-title");
+                        if (titleEl) {{
+                            titleEl.textContent = `Official Triggers (${{groupCount}})`;
+                        }}
+                        
+                        const searchContainer = document.getElementById("modal-trigger-search-container");
+                        const searchInput = document.getElementById("modal-trigger-search");
+                        if (searchContainer) {{
+                            if (groupCount > 3) {{
+                                searchContainer.style.display = "block";
+                                if (searchInput) searchInput.value = "";
+                            }} else {{
+                                searchContainer.style.display = "none";
+                            }}
+                        }}
                     }}
 
                     // Update metadata
@@ -5370,7 +6050,172 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         updatePromptBuilderUI();
         setupAutoHideScrollbars();
         loadUserDataSummary();
+
+        // Mark description wrappers that actually overflow so the fade gradient shows
+        function markOverflowingDescriptions() {{
+            document.querySelectorAll(".description-wrapper").forEach(wrapper => {{
+                const desc = wrapper.querySelector(".description");
+                if (!desc) return;
+                // Compare natural text height against the wrapper's current allocated height
+                const overflows = desc.scrollHeight > wrapper.clientHeight + 2;
+                wrapper.classList.toggle("overflowing", overflows);
+            }});
+        }}
+
+        // Hover Preview Card logic
+        let hoverTimeout = null;
+        let activeHoverCard = null;
+        let mouseX = 0;
+        let mouseY = 0;
+        
+        function showHoverPreview(card) {{
+            const hoverPreview = document.getElementById("hover-preview-card");
+            if (!hoverPreview) return;
+            
+            const name = card.dataset.name || "Unknown Model";
+            const versions = JSON.parse(card.dataset.versions || "[]");
+            const selectedVer = versions.find(v => v.file_stem === card.dataset.stem) || versions[0];
+            
+            if (!selectedVer) return;
+            
+            const verName = selectedVer.version_name || selectedVer.file_stem || "Default";
+            const baseModel = selectedVer.base_model || "Unknown";
+            const collections = JSON.parse(card.dataset.collections || "[]");
+            const collectionsText = collections.join(", ") || "None";
+            const rating = parseInt(card.dataset.rating || "0");
+            
+            let groupCount = 0;
+            if (selectedVer.trigger_groups_html) {{
+                const tempDiv = document.createElement("div");
+                tempDiv.innerHTML = selectedVer.trigger_groups_html;
+                groupCount = tempDiv.querySelectorAll(".trigger-group").length;
+            }} else if (selectedVer.trigger_words && selectedVer.trigger_words.length > 0) {{
+                groupCount = 1;
+            }}
+            
+            let ratingStars = '<span style="color: var(--text-muted);">None</span>';
+            if (rating > 0) {{
+                ratingStars = 
+                    `<span style="color: #fbbf24;">${{ "★".repeat(rating) }}</span>` + 
+                    `<span style="color: rgba(255, 255, 255, 0.2);">${{ "☆".repeat(5 - rating) }}</span>`;
+            }}
+            
+            document.getElementById("hover-preview-title").textContent = name;
+            document.getElementById("hover-preview-version").textContent = verName;
+            document.getElementById("hover-preview-base-model").textContent = baseModel;
+            document.getElementById("hover-preview-collections").textContent = collectionsText;
+            document.getElementById("hover-preview-rating").innerHTML = ratingStars;
+            document.getElementById("hover-preview-triggers").textContent = `${{groupCount}} Groups`;
+            
+            const x = mouseX;
+            const y = mouseY;
+            
+            hoverPreview.style.display = "block";
+            
+            const previewWidth = hoverPreview.offsetWidth || 280;
+            const previewHeight = hoverPreview.offsetHeight || 180;
+            
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            let top = y + window.scrollY + 15;
+            let left = x + window.scrollX + 15;
+            
+            if (x + 15 + previewWidth > viewportWidth) {{
+                left = x + window.scrollX - previewWidth - 15;
+            }}
+            if (y + 15 + previewHeight > viewportHeight) {{
+                top = y + window.scrollY - previewHeight - 15;
+            }}
+            
+            if (left < window.scrollX) left = window.scrollX + 10;
+            if (top < window.scrollY) top = window.scrollY + 10;
+            
+            hoverPreview.style.top = `${{top}}px`;
+            hoverPreview.style.left = `${{left}}px`;
+            
+            hoverPreview.classList.add("visible");
+        }}
+        
+        function hideHoverPreview() {{
+            const hoverPreview = document.getElementById("hover-preview-card");
+            if (!hoverPreview) return;
+            hoverPreview.classList.remove("visible");
+            setTimeout(() => {{
+                if (!hoverPreview.classList.contains("visible")) {{
+                    hoverPreview.style.display = "none";
+                }}
+            }}, 150);
+        }}
+        
+        if (grid) {{
+            grid.addEventListener("mousemove", (e) => {{
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }}, {{ passive: true }});
+            
+            grid.addEventListener("mouseover", (e) => {{
+                const modal = document.getElementById("details-modal");
+                if (modal && modal.classList.contains("active")) return;
+                
+                const card = e.target.closest(".card");
+                if (!card) return;
+                
+                if (activeHoverCard === card) return;
+                
+                if (hoverTimeout) {{
+                    clearTimeout(hoverTimeout);
+                }}
+                
+                activeHoverCard = card;
+                
+                hoverTimeout = setTimeout(() => {{
+                    showHoverPreview(card);
+                }}, 600); // 600ms preview delay
+            }});
+            
+            grid.addEventListener("mouseout", (e) => {{
+                const card = e.target.closest(".card");
+                if (!card) return;
+                
+                const related = e.relatedTarget;
+                if (!related || !card.contains(related)) {{
+                    clearTimeout(hoverTimeout);
+                    hoverTimeout = null;
+                    activeHoverCard = null;
+                    hideHoverPreview();
+                }}
+            }});
+            
+            grid.addEventListener("click", () => {{
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+                activeHoverCard = null;
+                hideHoverPreview();
+            }});
+        }}
+        
+        window.addEventListener("scroll", () => {{
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+            activeHoverCard = null;
+            hideHoverPreview();
+        }}, {{ passive: true }});
+
+        // Run once on load (after layout settles)
+        requestAnimationFrame(() => requestAnimationFrame(markOverflowingDescriptions));
     </script>
+    
+    <div id="hover-preview-card" class="hover-preview-card" style="display: none; position: absolute; pointer-events: none; z-index: 10000;">
+        <div class="hover-preview-content">
+            <h4 id="hover-preview-title" class="hover-preview-title"></h4>
+            <div class="hover-preview-row"><span class="hover-preview-label">Version:</span><span id="hover-preview-version" class="hover-preview-value"></span></div>
+            <div class="hover-preview-row"><span class="hover-preview-label">Base Model:</span><span id="hover-preview-base-model" class="hover-preview-value"></span></div>
+            <div class="hover-preview-row"><span class="hover-preview-label">Collections:</span><span id="hover-preview-collections" class="hover-preview-value"></span></div>
+            <div class="hover-preview-row"><span class="hover-preview-label">Rating:</span><span id="hover-preview-rating" class="hover-preview-value"></span></div>
+            <div class="hover-preview-row"><span class="hover-preview-label">Triggers:</span><span id="hover-preview-triggers" class="hover-preview-value"></span></div>
+        </div>
+    </div>
 </body>
 </html>
 """

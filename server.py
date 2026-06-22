@@ -69,36 +69,36 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     with path.open("r", encoding="utf-8") as f:
                         data = json.load(f)
-                    
-                    # Find corresponding model file in parent directory
-                    model_file = None
+
+                    personal_triggers = data.get("personal_trigger_words", [])
+                    notes = data.get("notes", "")
+                    rating = data.get("rating", 0)
+                    collections = data.get("collections", [])
+
+                    # Only include if there is actual user content
+                    if not (personal_triggers or notes.strip() or rating > 0 or collections):
+                        continue
+
+                    entry = {
+                        "has_notes": bool(notes.strip()),
+                        "has_personal_triggers": bool(personal_triggers),
+                        "rating": rating,
+                        "collections": collections
+                    }
+
+                    # Assign entry to ALL model files in the same folder
+                    # (one user_data.json covers every version/file in that folder)
+                    found_any = False
                     for ext in LORA_EXTENSIONS:
                         for f_in_dir in path.parent.glob(f"*{ext}"):
                             if is_lora_file(f_in_dir):
-                                model_file = f_in_dir
-                                break
-                        if model_file:
-                            break
-                    
-                    if model_file:
-                        relative_path = model_file.resolve().relative_to(self.lora_root.resolve()).as_posix()
-                        
-                        personal_triggers = data.get("personal_trigger_words", [])
-                        notes = data.get("notes", "")
-                        rating = data.get("rating", 0)
-                        collections = data.get("collections", [])
-                        
-                        # Only add to summary if there is actual content
-                        if personal_triggers or notes.strip() or rating > 0 or collections:
-                            summary[relative_path] = {
-                                "has_notes": bool(notes.strip()),
-                                "has_personal_triggers": bool(personal_triggers),
-                                "rating": rating,
-                                "collections": collections
-                            }
+                                rel = f_in_dir.resolve().relative_to(self.lora_root.resolve()).as_posix()
+                                summary[rel] = entry
+                                found_any = True
+
                 except Exception:
                     continue
-                    
+
             self.send_success_response(summary)
         except Exception as e:
             self.send_error_response(500, f"Error gathering user data summary: {e}")

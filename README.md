@@ -1,4 +1,4 @@
-# LoRA Library Manager (Version 2.0)
+# LoRA Library Manager
 
 A high-performance, stable command-line utility and responsive dark-themed web gallery for organizing, hashing, downloading metadata/previews from CivitAI, and building prompts for large libraries of Stable Diffusion LoRA models.
 
@@ -101,19 +101,25 @@ Open `gallery.html` in your web browser (or start the server using Option 7) to 
 
 ### 2. Collapsible Trigger Word Groups
 *   **Outfit & Preset Preservations**: Instead of flattening trigger words, the gallery groups them by style presets extracted directly from CivitAI metadata (e.g. `School Uniform`, `White Dress`, `Casual`).
-*   **Accordion Folders**: Groups render collapsed by default to save card space. Click any group header to expand it with a smooth animation.
+*   **Accordion Folders & Word Counts**: Groups render collapsed by default to save card space. Click any group header to expand it. Headers display live word counts (e.g., `Aqua (5)`).
 *   **Copy Button per Group**: Click the inline copy icon on any group header to copy only the trigger words contained in that specific style group to your clipboard.
+*   **Searchable Trigger Groups**: If a model version contains more than 3 trigger groups, a live search box (`🔍 Search triggers...`) appears inside the details modal to instantly filter groups.
 
 ### 3. Interactive Prompt Builder Panel
 *   **Docked Panel**: A persistent builder panel sits anchored at the bottom of the page, showing the active LoRA tokens in your prompt.
 *   **Add to Prompt**: Click `[+ Add to Prompt]` on any card. It appends `<lora:filename_without_extension:selected_weight>` using the global weight selector's current value.
 *   **Tag Weight Selectors**: Select Copy weights (`0.6`, `0.8`, `1.0`, `1.2`) in the top toolbar. The builder remembers the last selected weight using `localStorage`.
 *   **Token Management**: Click the close `×` button on any token to remove it individually, clear the entire builder with `Clear All`, or copy the combined spaced-separated prompt string using `Copy Prompt`.
+*   **Non-Destructive Preset Composition**: Prompt presets can be loaded and composed/merged non-destructively. Applying a preset appends its tokens without duplicating existing tags or LoRA configurations, allowing modular prompt construction.
+*   **Smart Presets Sorting**: Presets are sorted dynamically by `last_used` timestamp in descending order so the most relevant presets are bubbled to the top. The entire row card is clickable for rapid loading.
 
 ### 4. Smart Search & Filters
 *   **Global Search**: Instantly searches by model name, folder name, descriptions, tags, creator usernames, and hidden trigger fields.
+*   **Extensible Collection Stats Registry**: Features a unified registry (`SYSTEM_COLLECTIONS`) to calculate and filter Library, Favorites, Uncategorized, and custom user collections seamlessly.
+*   **Live Metadata Hover Cards**: Hovering over grid cards displays a detailed preview card (ratings, size, release dates, tags) after a view-safe 600ms delay. Implements passive coordinate tracking and viewport bounds protection to prevent off-screen clipping.
 *   **Favorites Filter**: Persists favorited models in browser `localStorage` using their SHA256 hash. Click the favorite toggle to display only starred items.
 *   **Double-click Triggers**: Double-clicking the card preview image copies all trigger words for that model version immediately.
+*   **Split-Action Chips**: Triggers copy to clipboard instantly when clicked, while hoverable vertical partition dividers isolate clean, high-visibility vector close/cross (X) deletion zones.
 
 ### 5. Accessibility Support
 *   **Full Keyboard Navigation**: Navigate all buttons, favorites, triggers, dropdowns, and prompt builder items using the `Tab` key.
@@ -127,6 +133,13 @@ Open `gallery.html` in your web browser (or start the server using Option 7) to 
 ---
 
 ## Changelog
+
+### Version 2.0.0
+*   **Extensible Collections Registry**: Standardized filter counts and queries via `SYSTEM_COLLECTIONS`.
+*   **Preset Composition & Sorting**: Supported non-destructive merging/composing of prompt presets with automatic `last_used` sorting.
+*   **Delayed Hover Tooltips**: Implemented responsive hover previews with a 600ms delay, passive mouse coordinate tracking, and viewport auto-flipping.
+*   **Searchable Trigger Groups**: Added searchable trigger groups for complex models (>3 groups) with word count indicators on collapsible headers.
+*   **Split-Action Chips**: Copy-on-click trigger tags with separate partition lines and high-visibility close/cross (X) SVG icons.
 
 ### Version 1.8.0
 *   **Version Grouping**: Groups multiple versions of a model under one card, sorted by CivitAI version ID (descending) so the latest release is selected by default.
