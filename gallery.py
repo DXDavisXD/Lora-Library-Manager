@@ -229,6 +229,40 @@ def get_preview_image(lora_file: Path) -> str:
     return ""
 
 
+# Known non-creator suffix tokens found in model filenames — used to reject
+# false positives when falling back to filename-based creator detection.
+_NON_CREATOR_TOKENS = {
+    "xl", "v1", "v2", "v3", "v4", "v5", "lora", "loha", "lycoris",
+    "pony", "sdxl", "sd15", "sd21", "flux", "illustrious", "animagine",
+    "noob", "animefull", "base", "safetensors", "ckpt", "pt", "bin",
+    "fp16", "fp32", "bf16", "pruned", "full", "final", "last", "merged",
+}
+
+
+def _extract_creator_from_filename(stem: str) -> str:
+    """Try to extract a CivitAI creator/author name from a filename stem.
+
+    Primary strategy — explicit ``-lora-<creator>`` delimiter used by most
+    CivitAI auto-downloads:
+
+        ayako-kuroba-s2-illustriousxl-lora-nochekaiser  →  nochekaiser
+
+    Returns empty string when the filename does not follow this naming convention.
+    """
+    stem_lower = stem.lower()
+
+    # Look for explicit -lora- delimiter
+    if "-lora-" in stem_lower:
+        after = stem_lower.split("-lora-", 1)[1]
+        # Take first segment in case of further hyphens/underscores
+        candidate = after.split("-")[0].split("_")[0]
+        if candidate and candidate.isalpha() and 3 <= len(candidate) <= 30:
+            return candidate
+
+    return ""
+
+
+
 # Build one gallery entry for a LoRA file.
 def build_gallery_entry(lora_file: Path) -> dict:
     metadata = load_metadata(lora_file)
@@ -247,6 +281,12 @@ def build_gallery_entry(lora_file: Path) -> dict:
         creator = unwrapped.get("creator", {}).get("username", "")
     elif isinstance(unwrapped.get("creator"), str):
         creator = unwrapped.get("creator", "")
+
+    # Fallback: extract creator from filename when metadata has no creator field.
+    # CivitAI downloads follow the pattern: <slug>-lora-<creator>.<ext>
+    # e.g. "ayako-kuroba-s2-illustriousxl-lora-nochekaiser.safetensors" → "nochekaiser"
+    if not creator:
+        creator = _extract_creator_from_filename(lora_file.stem)
 
     tags = []
     raw_tags = unwrapped.get("tags") or (model_obj.get("tags") if isinstance(model_obj, dict) else None)
@@ -295,11 +335,14 @@ def build_gallery_entry(lora_file: Path) -> dict:
 
 
 # Build gallery entries for every LoRA file in the library.
-def build_gallery_index(library_dir: Path) -> list[dict]:
+# When use_cache is True (default), entries for unchanged files are read from
+# library_index.json instead of rebuilding from disk, dramatically reducing
+# metadata re-parsing on large unchanged libraries.
+def build_gallery_index(library_dir: Path, use_cache: bool = True) -> list[dict]:
     if not library_dir.exists():
         return []
 
-    entries = []
+    # --- Filesystem scan (same logic as before) ---
     lora_files = []
     for ext in LORA_EXTENSIONS:
         for path in library_dir.rglob(f"*{ext}"):
@@ -307,18 +350,74 @@ def build_gallery_index(library_dir: Path) -> list[dict]:
                 lora_files.append(path)
 
     # Deduplicate paths
-    seen = set()
-    unique_files = []
+    seen: set = set()
+    unique_files: list = []
     for path in lora_files:
         resolved = path.resolve()
         if resolved not in seen:
             seen.add(resolved)
             unique_files.append(path)
 
-    for path in unique_files:
-        entries.append(build_gallery_entry(path))
+    # --- Fast path: cache disabled ---
+    if not use_cache:
+        return [build_gallery_entry(path) for path in unique_files]
+
+    # --- Cache-assisted path ---
+    from library_index import (
+        load_library_index,
+        save_library_index,
+        make_index_key,
+        get_file_fingerprint,
+        _fingerprint_matches,
+    )
+
+    index = load_library_index(library_dir)
+    cached_models: dict = index.setdefault("models", {})
+    current_keys: set = set()
+    entries: list = []
+    hits = 0
+    misses = 0
+
+    for lora_file in unique_files:
+        key = make_index_key(lora_file, library_dir)
+        current_keys.add(key)
+        live_fp = get_file_fingerprint(lora_file)
+
+        # Cache hit: fingerprint unchanged and entry present
+        if live_fp and key in cached_models:
+            cached_record = cached_models[key]
+            if _fingerprint_matches(cached_record, live_fp) and "entry" in cached_record:
+                entries.append(cached_record["entry"])
+                hits += 1
+                continue
+
+        # Cache miss: rebuild entry from disk
+        entry = build_gallery_entry(lora_file)
+        entries.append(entry)
+        misses += 1
+
+        # Write updated fingerprint + entry back to cache record
+        fp = live_fp or {}
+        cached_models[key] = {
+            "mtime": fp.get("mtime", 0),
+            "size": fp.get("size", 0),
+            "metadata_mtime": fp.get("metadata_mtime", 0),
+            "entry": entry,
+        }
+
+    # Prune stale entries for files that no longer exist
+    stale_keys = [k for k in cached_models if k not in current_keys]
+    for k in stale_keys:
+        del cached_models[k]
+
+    log_operation(
+        f"[Index] Gallery index: {hits} cache hits, {misses} rebuilds, "
+        f"{len(stale_keys)} stale entries removed"
+    )
+    save_library_index(library_dir, index)
 
     return entries
+
 
 
 # Save the gallery index as a JSON file.
@@ -548,7 +647,18 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
                 </button>
-
+                {f'''
+                <div class="creator-badge">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                        <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+                    </svg>
+                    {escape_text(group.get("creator", ""))}
+                </div>
+                ''' if group.get("creator") else ''}
                 <div class="preview-feedback">Triggers Copied!</div>
             </div>
             <div class="content">
@@ -1084,12 +1194,50 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             width: 100%;
             height: 100%;
             object-fit: cover;
+            object-position: center top;
             display: block;
             transition: var(--transition);
         }}
 
         .card:hover .preview img {{
-            transform: scale(1.05);
+            transform: scale(1.04);
+        }}
+
+        /* Subtle artist/creator badge — top-left of the preview image */
+        .creator-badge {{
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: rgba(15, 16, 22, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.75);
+            letter-spacing: 0.02em;
+            pointer-events: none;
+            max-width: 140px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            opacity: 0.85;
+            z-index: 5;
+            transition: opacity 0.2s ease;
+        }}
+
+        .creator-badge svg {{
+            flex-shrink: 0;
+            opacity: 0.70;
+        }}
+
+        .card:hover .creator-badge {{
+            opacity: 1;
         }}
 
         .btn-favorite {{
@@ -6100,12 +6248,25 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     `<span style="color: rgba(255, 255, 255, 0.2);">${{ "☆".repeat(5 - rating) }}</span>`;
             }}
             
+            const creator = card.dataset.creator || "";
+            
             document.getElementById("hover-preview-title").textContent = name;
             document.getElementById("hover-preview-version").textContent = verName;
             document.getElementById("hover-preview-base-model").textContent = baseModel;
             document.getElementById("hover-preview-collections").textContent = collectionsText;
             document.getElementById("hover-preview-rating").innerHTML = ratingStars;
             document.getElementById("hover-preview-triggers").textContent = `${{groupCount}} Groups`;
+            
+            const artistRow = document.getElementById("hover-preview-artist-row");
+            const artistVal = document.getElementById("hover-preview-artist");
+            if (artistRow && artistVal) {{
+                if (creator) {{
+                    artistRow.style.display = "";
+                    artistVal.textContent = creator;
+                }} else {{
+                    artistRow.style.display = "none";
+                }}
+            }}
             
             const x = mouseX;
             const y = mouseY;
@@ -6211,6 +6372,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             <h4 id="hover-preview-title" class="hover-preview-title"></h4>
             <div class="hover-preview-row"><span class="hover-preview-label">Version:</span><span id="hover-preview-version" class="hover-preview-value"></span></div>
             <div class="hover-preview-row"><span class="hover-preview-label">Base Model:</span><span id="hover-preview-base-model" class="hover-preview-value"></span></div>
+            <div id="hover-preview-artist-row" class="hover-preview-row" style="display:none;"><span class="hover-preview-label">Artist:</span><span id="hover-preview-artist" class="hover-preview-value" style="color: #a78bfa;"></span></div>
             <div class="hover-preview-row"><span class="hover-preview-label">Collections:</span><span id="hover-preview-collections" class="hover-preview-value"></span></div>
             <div class="hover-preview-row"><span class="hover-preview-label">Rating:</span><span id="hover-preview-rating" class="hover-preview-value"></span></div>
             <div class="hover-preview-row"><span class="hover-preview-label">Triggers:</span><span id="hover-preview-triggers" class="hover-preview-value"></span></div>

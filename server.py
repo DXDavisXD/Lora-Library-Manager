@@ -11,6 +11,17 @@ import sys
 
 from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, PREVIEW_EXTENSIONS, log_operation
 
+# ---------------------------------------------------------------------------
+# In-memory TTL cache for the user-data summary endpoint.
+# The summary is computed by an rglob scan across all user_data.json files,
+# which is expensive on large libraries.  We cache the result for
+# _USER_DATA_CACHE_TTL seconds and invalidate it whenever a save occurs.
+# ---------------------------------------------------------------------------
+import time as _time
+
+_USER_DATA_CACHE_TTL: float = 30.0   # seconds
+_user_data_cache: dict = {}           # {"data": {...}, "computed_at": float}
+
 class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, lora_root: Path = None, **kwargs):
         self.lora_root = lora_root or get_lora_root()
@@ -62,9 +73,20 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(404, "Not Found")
 
     def handle_get_summary(self):
+        global _user_data_cache
         try:
+            now = _time.monotonic()
+            # Return cached result when it is still fresh
+            if (
+                _user_data_cache
+                and "computed_at" in _user_data_cache
+                and (now - _user_data_cache["computed_at"]) < _USER_DATA_CACHE_TTL
+            ):
+                self.send_success_response(_user_data_cache["data"])
+                return
+
+            # Cache stale or empty — rebuild from disk
             summary = {}
-            # Scan for all user_data.json files recursively
             for path in self.lora_root.rglob("user_data.json"):
                 try:
                     with path.open("r", encoding="utf-8") as f:
@@ -99,6 +121,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     continue
 
+            # Store in cache
+            _user_data_cache = {"data": summary, "computed_at": _time.monotonic()}
             self.send_success_response(summary)
         except Exception as e:
             self.send_error_response(500, f"Error gathering user data summary: {e}")
@@ -447,7 +471,12 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 json.dump(existing_data, f, indent=2)
                 
             log_operation(f"Saved user data sidecar: {user_data_path}")
-                    
+
+            # Invalidate the in-memory summary cache so the next /api/user_data_summary
+            # request reflects this write without waiting for the TTL to expire.
+            global _user_data_cache
+            _user_data_cache = {}
+
             self.send_success_response({
                 "status": "success",
                 "message": "User data saved successfully",

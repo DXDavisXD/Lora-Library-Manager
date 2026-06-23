@@ -96,6 +96,7 @@ Open `gallery.html` in your web browser (or start the server using Option 7) to 
 
 ### 1. Multi-Version Card UI
 *   **Version Dropdown**: Located directly on each card, letting you toggle between versions. Swapping a version instantly updates the active preview image, descriptions, tags, and builder hooks.
+*   **Artist/Creator Badges**: Displays a subtle, semi-transparent badge at the bottom-right corner of the preview image showing the model creator (fetched via CivitAI API or parsed from filename conventions).
 *   **Ellipsis Text Truncation**: Supports long version name strings gracefully inside a flexible card layout.
 *   **Variant Deletion**: A delete button next to the dropdown deletes specific files (Safetensors, metadata, preview) from your system securely.
 

@@ -214,10 +214,15 @@ def print_statistics(stats: dict[str, int]) -> None:
 
 
 # Organize every LoRA file in a source folder into the library.
+# When changed_files is provided, only those specific files are processed
+# instead of scanning the entire source directory.  This allows the caller
+# (run_automatic in main.py) to pass only the added/modified paths from the
+# incremental index so unaffected models are never touched.
 def organize_library(
     source_dir: Path,
     library_dir: Path | None = None,
     print_summary: bool = True,
+    changed_files: list[Path] | None = None,
 ) -> dict[str, int]:
     target_library_dir = library_dir or source_dir
     stats = {
@@ -226,7 +231,13 @@ def organize_library(
         "errors": 0,
     }
 
-    for lora_file in find_lora_files(source_dir):
+    # Use the caller-supplied list when provided; otherwise full scan.
+    files_to_process = changed_files if changed_files is not None else find_lora_files(source_dir)
+
+    for lora_file in files_to_process:
+        # Guard: file might have been moved or deleted between detection and here.
+        if not lora_file.exists():
+            continue
         try:
             result = organize_lora_file(lora_file, target_library_dir)
             stats[result] += 1

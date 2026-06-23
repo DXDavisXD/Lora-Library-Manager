@@ -26,6 +26,7 @@ from downloader import (
     save_metadata_if_missing,
 )
 from gallery import build_gallery_index, save_gallery_html, metadata_belongs_to_file
+from library_index import load_library_index, detect_library_changes
 from server import start_server
 from organizer import find_lora_files, organize_library
 
@@ -89,6 +90,7 @@ def print_menu() -> None:
     print(f"7. Toggle Dry Run Mode (Currently {dry_status})")
     print(f"8. Toggle Verbose Mode (Currently {verbose_status})")
     print("9. Set CivitAI API Key")
+    print("10. Quick Refresh")
     print()
 
 
@@ -174,6 +176,18 @@ def fetch_model_metadata(model_file: Path) -> dict:
     response = get_model_for_safetensors(model_file)
 
     if response.get("ok"):
+        try:
+            from civitai import get_model, unwrap_civitai_metadata
+            unwrapped = unwrap_civitai_metadata(response)
+            model_id = unwrapped.get("modelId")
+            if model_id:
+                model_res = get_model(model_id)
+                if model_res.get("ok") and isinstance(model_res.get("data"), dict):
+                    model_data = model_res["data"]
+                    if "creator" in model_data:
+                        unwrapped["creator"] = model_data["creator"]
+        except Exception:
+            pass
         return response
 
     return {
@@ -245,8 +259,9 @@ def run_asset_job(
 
 
 # Organize loose models inside the configured LoRA root.
-def run_organize(lora_root: Path) -> dict[str, int]:
-    return organize_library(lora_root, print_summary=False)
+# Pass changed_files to restrict processing to only added/modified paths.
+def run_organize(lora_root: Path, changed_files: list[Path] | None = None) -> dict[str, int]:
+    return organize_library(lora_root, print_summary=False, changed_files=changed_files)
 
 
 # Refresh the generated HTML gallery inside the configured LoRA root.
@@ -255,11 +270,59 @@ def refresh_gallery(lora_root: Path) -> Path:
     return save_gallery_html(entries, lora_root / "gallery.html")
 
 
+# Lightweight refresh: detect changes and regenerate gallery only if needed.
+# Does NOT trigger organize or asset downloads.
+def run_quick_refresh(lora_root: Path) -> dict:
+    print("Checking for library changes...")
+    log_operation("[Index] Quick Refresh started")
+    index = load_library_index(lora_root)
+    changes = detect_library_changes(lora_root, index)
+
+    n_added = len(changes["added"])
+    n_modified = len(changes["modified"])
+    n_removed = len(changes["removed"])
+
+    if n_added == 0 and n_modified == 0 and n_removed == 0:
+        msg = "[Index] No library changes detected."
+        print(msg)
+        log_operation(msg)
+        return {"quick_refresh": "no_changes", "gallery_file": str(lora_root / "gallery.html")}
+
+    print(f"Changes detected: {n_added} added, {n_modified} modified, {n_removed} removed")
+    gallery_file = refresh_gallery(lora_root)
+    log_operation("[Index] Quick Refresh complete")
+    return {"quick_refresh": "updated", "gallery_file": str(gallery_file)}
+
+
 # Run the automatic workflow: organize, download metadata, download previews, and refresh gallery.
+# Loads the library index first; exits immediately if no files have changed.
 def run_automatic(lora_root: Path) -> dict[str, dict[str, int] | str]:
-    organize_summary = run_organize(lora_root)
+    print("Checking for library changes...")
+    log_operation("[Index] Automatic run started")
+    index = load_library_index(lora_root)
+    changes = detect_library_changes(lora_root, index)
+
+    added = changes["added"]
+    modified = changes["modified"]
+    removed = changes["removed"]
+
+    if len(added) == 0 and len(modified) == 0 and len(removed) == 0:
+        msg = "[Index] No library changes detected. Skipping organize, asset download, and gallery refresh."
+        print(msg)
+        log_operation(msg)
+        return {
+            "organizer": {"organized": 0, "skipped": 0, "errors": 0},
+            "assets": create_asset_summary(),
+            "gallery_file": str(lora_root / "gallery.html"),
+            "no_changes": True,
+        }
+
+    # Changes detected — run targeted organize then full asset job and gallery refresh.
+    print(f"Changes detected: {len(added)} added, {len(modified)} modified, {len(removed)} removed")
+    organize_summary = run_organize(lora_root, changed_files=added + modified)
     asset_summary = run_asset_job(lora_root, download_metadata=True, download_preview=True)
     gallery_index = refresh_gallery(lora_root)
+    log_operation("[Index] Automatic run complete")
 
     return {
         "organizer": organize_summary,
@@ -287,8 +350,23 @@ def print_summary(title: str, summary: any) -> None:
     print("=" * 50)
 
     if isinstance(summary, dict):
-        if "organizer" in summary or "assets" in summary or "gallery_file" in summary:
+        if "quick_refresh" in summary:
+            # Quick Refresh summary structure
+            status = summary.get("quick_refresh", "")
+            if status == "no_changes":
+                print("  - Status: No library changes detected — gallery unchanged.")
+            else:
+                print("  - Status: Changes detected — gallery regenerated.")
+            if "gallery_file" in summary:
+                print(f"  - Gallery File: {summary['gallery_file']}")
+        elif "organizer" in summary or "assets" in summary or "gallery_file" in summary:
             # Automatic summary structure
+            if summary.get("no_changes"):
+                print("  - Status: No library changes detected.")
+                print("  - Organize, asset download, and gallery refresh were all skipped.")
+                if "gallery_file" in summary:
+                    print(f"  - Gallery File: {summary['gallery_file']}")
+                return
             if "organizer" in summary and isinstance(summary["organizer"], dict):
                 org = summary["organizer"]
                 print("Organization Status:")
@@ -435,8 +513,10 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
             else:
                 set_civitai_api_key(new_key)
                 print("API Key updated and saved.")
+    elif choice == "10":
+        print_summary("Quick Refresh", run_quick_refresh(lora_root))
     else:
-        print("Please choose a number from 1 to 9.")
+        print("Please choose a number from 1 to 10.")
 
     return True
 
