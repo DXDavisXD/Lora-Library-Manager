@@ -241,15 +241,16 @@ def merge_summary(total: dict[str, int], update: dict[str, int]) -> None:
         total[key] = total.get(key, 0) + value
 
 
-# Run an asset job across all safetensors files in a folder.
+# Run an asset job across safetensors files in a folder.
 def run_asset_job(
     library_dir: Path,
     download_metadata: bool,
     download_preview: bool,
     retries: int = 3,
+    target_files: list[Path] | None = None,
 ) -> dict[str, int]:
     summary = create_asset_summary()
-    model_files = find_safetensors_files(library_dir)
+    model_files = target_files if target_files is not None else find_safetensors_files(library_dir)
 
     for model_file in tqdm(model_files, desc="Processing models", unit="model"):
         update = process_model_assets(model_file, download_metadata, download_preview, retries)
@@ -317,10 +318,22 @@ def run_automatic(lora_root: Path) -> dict[str, dict[str, int] | str]:
             "no_changes": True,
         }
 
-    # Changes detected — run targeted organize then full asset job and gallery refresh.
+    # Changes detected — run targeted organize then targeted asset job and gallery refresh.
     print(f"Changes detected: {len(added)} added, {len(modified)} modified, {len(removed)} removed")
-    organize_summary = run_organize(lora_root, changed_files=added + modified)
-    asset_summary = run_asset_job(lora_root, download_metadata=True, download_preview=True)
+    changed_list = added + modified
+    organize_summary = run_organize(lora_root, changed_files=changed_list)
+    
+    # Map changed files to their post-organization paths for targeted asset downloading
+    from organizer import get_target_folder
+    post_organize_files = []
+    for f in changed_list:
+        target = get_target_folder(f, lora_root) / f.name
+        if target.exists():
+            post_organize_files.append(target)
+        else:
+            post_organize_files.append(f)
+
+    asset_summary = run_asset_job(lora_root, download_metadata=True, download_preview=True, target_files=post_organize_files)
     gallery_index = refresh_gallery(lora_root)
     log_operation("[Index] Automatic run complete")
 

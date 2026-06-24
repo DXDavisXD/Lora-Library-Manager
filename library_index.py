@@ -26,6 +26,7 @@ from config import (
     LORA_EXTENSIONS,
     is_lora_file,
     log_operation,
+    PREVIEW_EXTENSIONS,
 )
 
 # Bump this whenever the cache schema changes in a breaking way.
@@ -194,9 +195,9 @@ def detect_library_changes(lora_root: Path, index: dict) -> dict:
 
         {
             "added":     [Path, ...],   # on disk but absent from cache
-            "modified":  [Path, ...],   # fingerprint changed
+            "modified":  [Path, ...],   # fingerprint changed or assets incomplete
             "removed":   [str, ...],    # cache key with no matching file
-            "unchanged": [Path, ...],   # fingerprint identical
+            "unchanged": [Path, ...],   # fingerprint identical and assets complete
         }
 
     Also logs change counts and cache hit / miss statistics using the
@@ -219,10 +220,21 @@ def detect_library_changes(lora_root: Path, index: dict) -> dict:
         if live_fp is None:
             continue  # Can't stat file — skip silently
 
+        # Fast assets-complete validation:
+        # 1. Check if metadata exists (metadata_mtime > 0.0)
+        # 2. Check if a local preview image exists (without parsing JSON)
+        has_metadata = live_fp["metadata_mtime"] > 0.0
+        has_preview = False
+        for ext in PREVIEW_EXTENSIONS:
+            if (lora_file.parent / f"{lora_file.stem}{ext}").exists():
+                has_preview = True
+                break
+        assets_complete = has_metadata and has_preview
+
         if key not in cached_models:
             added.append(lora_file)
             misses += 1
-        elif not _fingerprint_matches(cached_models[key], live_fp):
+        elif not _fingerprint_matches(cached_models[key], live_fp) or not assets_complete:
             modified.append(lora_file)
             misses += 1
         else:
