@@ -262,7 +262,8 @@ def run_asset_job(
 # Organize loose models inside the configured LoRA root.
 # Pass changed_files to restrict processing to only added/modified paths.
 def run_organize(lora_root: Path, changed_files: list[Path] | None = None) -> dict[str, int]:
-    return organize_library(lora_root, print_summary=False, changed_files=changed_files)
+    stats, _ = organize_library(lora_root, print_summary=False, changed_files=changed_files)
+    return stats
 
 
 # Refresh the generated HTML gallery inside the configured LoRA root.
@@ -321,17 +322,7 @@ def run_automatic(lora_root: Path) -> dict[str, dict[str, int] | str]:
     # Changes detected — run targeted organize then targeted asset job and gallery refresh.
     print(f"Changes detected: {len(added)} added, {len(modified)} modified, {len(removed)} removed")
     changed_list = added + modified
-    organize_summary = run_organize(lora_root, changed_files=changed_list)
-    
-    # Map changed files to their post-organization paths for targeted asset downloading
-    from organizer import get_target_folder
-    post_organize_files = []
-    for f in changed_list:
-        target = get_target_folder(f, lora_root) / f.name
-        if target.exists():
-            post_organize_files.append(target)
-        else:
-            post_organize_files.append(f)
+    organize_summary, post_organize_files = organize_library(lora_root, print_summary=False, changed_files=changed_list)
 
     asset_summary = run_asset_job(lora_root, download_metadata=True, download_preview=True, target_files=post_organize_files)
     gallery_index = refresh_gallery(lora_root)

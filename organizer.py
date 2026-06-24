@@ -163,11 +163,11 @@ def move_without_overwrite(source_path: Path, target_path: Path) -> bool:
 
 
 # Move one LoRA file into its own library folder.
-def organize_lora_file(lora_file: Path, library_dir: Path) -> str:
-    target_folder = get_target_folder(lora_file, library_dir)
-    target_path = target_folder / lora_file.name
+def organize_lora_file(lora_file: Path, library_dir: Path, target_folder: Path | None = None) -> str:
+    folder = target_folder if target_folder is not None else get_target_folder(lora_file, library_dir)
+    target_path = folder / lora_file.name
 
-    if would_create_nested_duplicate(lora_file, target_folder):
+    if would_create_nested_duplicate(lora_file, folder):
         return "skipped"
 
     sidecar_files = find_sidecar_files(lora_file)
@@ -176,7 +176,7 @@ def organize_lora_file(lora_file: Path, library_dir: Path) -> str:
         return "skipped"
 
     for sidecar_file in sidecar_files:
-        sidecar_target = target_folder / sidecar_file.name
+        sidecar_target = folder / sidecar_file.name
         move_without_overwrite(sidecar_file, sidecar_target)
 
     # Clean up parent directory if no other model files remain in it
@@ -223,13 +223,14 @@ def organize_library(
     library_dir: Path | None = None,
     print_summary: bool = True,
     changed_files: list[Path] | None = None,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], list[Path]]:
     target_library_dir = library_dir or source_dir
     stats = {
         "organized": 0,
         "skipped": 0,
         "errors": 0,
     }
+    processed_paths = []
 
     # Use the caller-supplied list when provided; otherwise full scan.
     files_to_process = changed_files if changed_files is not None else find_lora_files(source_dir)
@@ -239,12 +240,20 @@ def organize_library(
         if not lora_file.exists():
             continue
         try:
-            result = organize_lora_file(lora_file, target_library_dir)
+            target_folder = get_target_folder(lora_file, target_library_dir)
+            target_path = target_folder / lora_file.name
+            
+            result = organize_lora_file(lora_file, target_library_dir, target_folder=target_folder)
             stats[result] += 1
-        except OSError:
+            if result in ("organized", "skipped"):
+                processed_paths.append(target_path)
+            else:
+                processed_paths.append(lora_file)
+        except Exception:
             stats["errors"] += 1
+            processed_paths.append(lora_file)
 
     if print_summary:
         print_statistics(stats)
 
-    return stats
+    return stats, processed_paths
