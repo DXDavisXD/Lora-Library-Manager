@@ -346,15 +346,6 @@ Features include:
 - Library Analysis
 - Diagnostics
 
-### Planned
-
-- Folder synchronization from Collections
-- Real-time filesystem monitoring
-- Duplicate merge assistant
-- Batch editing
-- Plugin support
-- AI-assisted tagging
-- Better update management
 
 ---
 
