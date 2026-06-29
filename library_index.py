@@ -72,8 +72,31 @@ def load_library_index(lora_root: Path) -> dict:
             with path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, dict) and data.get("version") == LIBRARY_INDEX_VERSION:
-                model_count = len(data.get("models", {}))
-                log_operation(f"[Index] Loaded {model_count} cached models")
+                resolved_root = lora_root.resolve()
+                models_cache = data.get("models", {})
+                valid_models = {}
+                discarded_count = 0
+                for key, record in models_cache.items():
+                    entry = record.get("entry", {})
+                    entry_file = entry.get("file")
+                    is_valid = False
+                    if entry_file:
+                        try:
+                            if Path(entry_file).resolve().is_relative_to(resolved_root):
+                                is_valid = True
+                        except Exception:
+                            pass
+                    if is_valid:
+                        valid_models[key] = record
+                    else:
+                        discarded_count += 1
+                
+                data["models"] = valid_models
+                model_count = len(valid_models)
+                if discarded_count > 0:
+                    log_operation(f"[Index] Loaded {model_count} cached models (discarded {discarded_count} stale root entries)")
+                else:
+                    log_operation(f"[Index] Loaded {model_count} cached models")
                 return data
             # Wrong version — treat as invalid
         except (json.JSONDecodeError, OSError, KeyError):

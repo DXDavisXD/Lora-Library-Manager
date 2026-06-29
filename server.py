@@ -8,8 +8,10 @@ from datetime import datetime
 from pathlib import Path
 import os
 import sys
+import threading
+import queue
 
-from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, PREVIEW_EXTENSIONS, log_operation
+from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, PREVIEW_EXTENSIONS, log_operation, clean_model_collections
 
 # ---------------------------------------------------------------------------
 # In-memory TTL cache for the user-data summary endpoint.
@@ -18,6 +20,15 @@ from config import get_lora_root, is_lora_file, LORA_EXTENSIONS, PREVIEW_EXTENSI
 # _USER_DATA_CACHE_TTL seconds and invalidate it whenever a save occurs.
 # ---------------------------------------------------------------------------
 import time as _time
+
+# ---------------------------------------------------------------------------
+# Background task runner — only one task runs at a time.
+# Log lines are pushed into _task_log_queue so the SSE endpoint can stream
+# them to the browser in real-time.
+# ---------------------------------------------------------------------------
+_task_lock   = threading.Lock()
+_task_running = False           # True while a managed task is executing
+_task_log_queue: queue.Queue = queue.Queue()   # str lines or sentinel None
 
 _USER_DATA_CACHE_TTL: float = 30.0   # seconds
 _user_data_cache: dict = {}           # {"data": {...}, "computed_at": float}
@@ -54,6 +65,14 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_user_data(relative_path)
         elif path == "/api/collections":
             self.handle_get_collections()
+        elif path == "/manage" or path == "/manage/":
+            self.handle_manage_page()
+        elif path == "/api/log-stream":
+            self.handle_log_stream()
+        elif path == "/api/stats":
+            self.handle_get_stats()
+        elif path == "/api/settings":
+            self.handle_get_settings()
         else:
             # Fall back to serving static files
             super().do_GET()
@@ -67,8 +86,15 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_add_collection()
         elif self.path == "/api/delete_collection":
             self.handle_delete_collection()
+        elif self.path == "/api/rename_collection":
+            self.handle_rename_collection()
         elif self.path == "/api/open_folder":
             self.handle_open_folder()
+        elif self.path.startswith("/api/run/"):
+            action = self.path[len("/api/run/"):]
+            self.handle_run_task(action)
+        elif self.path == "/api/settings":
+            self.handle_post_settings()
         else:
             self.send_error_response(404, "Not Found")
 
@@ -95,7 +121,7 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     personal_triggers = data.get("personal_trigger_words", [])
                     notes = data.get("notes", "")
                     rating = data.get("rating", 0)
-                    collections = data.get("collections", [])
+                    collections = clean_model_collections(data.get("collections", []), path.parent)
 
                     # Only include if there is actual user content
                     if not (personal_triggers or notes.strip() or rating > 0 or collections):
@@ -128,18 +154,7 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(500, f"Error gathering user data summary: {e}")
 
     def load_collections_list(self) -> list:
-        collections_file = self.lora_root / "collections.json"
-        if collections_file.exists():
-            try:
-                with collections_file.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        return data
-            except Exception as e:
-                log_operation(f"Error loading collections.json: {e}")
-        
-        # Fallback: scan existing user_data.json files recursively to build initial list
-        log_operation("collections.json not found or invalid. Scanning library user_data.json files...")
+        # Rebuild/validate collections from user_data.json files recursively to ensure self-healing and no orphaned collections
         collections_set = set()
         for path in self.lora_root.rglob("user_data.json"):
             try:
@@ -155,7 +170,6 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                             c_clean = "Library"
                         
                         if c_clean not in ("Library", "Favorites"):
-                            # Case-insensitive deduplication: keep first casing encountered
                             exists = False
                             for existing in collections_set:
                                 if existing.lower() == c_clean.lower():
@@ -166,8 +180,7 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             except Exception:
                 continue
         
-        # Save to collections.json
-        collections_list = sorted(list(collections_set))
+        collections_list = sorted(list(collections_set), key=lambda x: x.lower())
         self.save_collections_list(collections_list)
         return collections_list
 
@@ -235,7 +248,15 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return
                 
             collections = self.load_collections_list()
-            updated_collections = [c for c in collections if c.lower() != target_name.lower()]
+            
+            # Delete target_name and all sub-collections (prefix matching)
+            target_lower = target_name.lower()
+            updated_collections = []
+            for c in collections:
+                c_lower = c.lower()
+                if c_lower == target_lower or c_lower.startswith(target_lower + " / ") or c_lower.startswith(target_lower + "/"):
+                    continue
+                updated_collections.append(c)
             self.save_collections_list(updated_collections)
             
             # Now update all user_data.json files recursively
@@ -247,12 +268,18 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     colls = user_data.get("collections", [])
                     has_target = False
                     for c in colls:
-                        if c.lower() == target_name.lower():
+                        c_lower = c.lower()
+                        if c_lower == target_lower or c_lower.startswith(target_lower + " / ") or c_lower.startswith(target_lower + "/"):
                             has_target = True
                             break
                             
                     if has_target:
-                        new_colls = [c for c in colls if c.lower() != target_name.lower()]
+                        new_colls = []
+                        for c in colls:
+                            c_lower = c.lower()
+                            if c_lower == target_lower or c_lower.startswith(target_lower + " / ") or c_lower.startswith(target_lower + "/"):
+                                continue
+                            new_colls.append(c)
                         user_data["collections"] = new_colls
                         user_data["last_modified"] = datetime.now().isoformat() + "Z"
                         
@@ -287,6 +314,98 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             threading.Thread(target=bg_refresh, daemon=True).start()
             
             self.send_success_response({"collections": updated_collections})
+        except json.JSONDecodeError:
+            self.send_error_response(400, "Invalid JSON payload")
+        except Exception as e:
+            self.send_error_response(500, f"Server Error: {e}")
+
+    def handle_rename_collection(self):
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8")
+            data = json.loads(body)
+            old_name = data.get("old_name", "").strip()
+            new_name = data.get("new_name", "").strip()
+            
+            if not old_name or not new_name:
+                self.send_error_response(400, "Both old_name and new_name must be specified")
+                return
+                
+            collections = self.load_collections_list()
+            old_lower = old_name.lower()
+            
+            # Update collections list in collections.json
+            updated_collections = []
+            for c in collections:
+                c_lower = c.lower()
+                # Rename the exact collection or subcollections
+                if c_lower == old_lower:
+                    if new_name not in updated_collections:
+                        updated_collections.append(new_name)
+                elif c_lower.startswith(old_lower + " / "):
+                    suffix = c[len(old_name):]
+                    renamed = new_name + suffix
+                    if renamed not in updated_collections:
+                        updated_collections.append(renamed)
+                else:
+                    if c not in updated_collections:
+                        updated_collections.append(c)
+                        
+            self.save_collections_list(updated_collections)
+            
+            # Now update all user_data.json files recursively
+            updated_count = 0
+            for path in self.lora_root.rglob("user_data.json"):
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        user_data = json.load(f)
+                    
+                    colls = user_data.get("collections", [])
+                    has_change = False
+                    new_colls = []
+                    
+                    for c in colls:
+                        c_lower = c.lower()
+                        if c_lower == old_lower:
+                            has_change = True
+                            if new_name not in new_colls:
+                                new_colls.append(new_name)
+                        elif c_lower.startswith(old_lower + " / "):
+                            has_change = True
+                            suffix = c[len(old_name):]
+                            renamed = new_name + suffix
+                            if renamed not in new_colls:
+                                new_colls.append(renamed)
+                        else:
+                            if c not in new_colls:
+                                new_colls.append(c)
+                                
+                    if has_change:
+                        user_data["collections"] = new_colls
+                        user_data["last_modified"] = datetime.now().isoformat() + "Z"
+                        with path.open("w", encoding="utf-8") as f:
+                            json.dump(user_data, f, indent=2)
+                        log_operation(f"Renamed collection in user data sidecar: {path}")
+                        updated_count += 1
+                except Exception as e:
+                    log_operation(f"Error renaming collection in sidecar {path}: {e}")
+                    continue
+            
+            # Invalidate summary cache
+            global _user_data_cache
+            _user_data_cache = {}
+            
+            # Trigger background refresh of gallery HTML to reflect the updated metadata
+            import threading
+            def bg_refresh():
+                try:
+                    from main import refresh_gallery
+                    refresh_gallery(self.lora_root)
+                except Exception as ex:
+                    log_operation(f"Error refreshing gallery HTML after renaming collection in thread: {ex}")
+            threading.Thread(target=bg_refresh, daemon=True).start()
+            
+            self.send_success_response({"ok": True, "updated_files": updated_count, "collections": updated_collections})
         except json.JSONDecodeError:
             self.send_error_response(400, "Invalid JSON payload")
         except Exception as e:
@@ -346,6 +465,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     with user_data_path.open("r", encoding="utf-8") as f:
                         data = json.load(f)
+                    if isinstance(data, dict) and "collections" in data:
+                        data["collections"] = clean_model_collections(data["collections"], target_model_file.parent)
                     self.send_success_response(data)
                 except Exception as e:
                     self.send_error_response(500, f"Error reading user data file: {e}")
@@ -361,6 +482,7 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(500, f"Server Error: {e}")
 
     def handle_save_user_data(self):
+        global _user_data_cache
         try:
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -389,7 +511,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             personal_triggers = user_payload.get("personal_trigger_words", [])
             notes = user_payload.get("notes", "")
             rating = user_payload.get("rating", 0)
-            collections = user_payload.get("collections", [])
+            collections = clean_model_collections(user_payload.get("collections", []), target_folder)
+            collections = collections[:1]  # enforce maximum of 1 collection
             
             has_content = bool(personal_triggers or notes.strip() or rating > 0 or collections)
             
@@ -402,6 +525,35 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     except OSError as e:
                         log_operation(f"Error deleting user data sidecar {user_data_path}: {e}")
                 
+                from organizer import organize_lora_file, get_target_folder
+                
+                # Compute new path before organization
+                new_target_folder = get_target_folder(target_model_file, self.lora_root)
+                new_relative_path = (new_target_folder / target_model_file.name).resolve().relative_to(self.lora_root.resolve()).as_posix()
+
+                # Automatically organize sibling model files back to the root folder
+                sibling_models = []
+                for ext in LORA_EXTENSIONS:
+                    for f in target_folder.glob(f"*{ext}"):
+                        if is_lora_file(f):
+                            sibling_models.append(f)
+                            
+                for model_file in sibling_models:
+                    organize_lora_file(model_file, self.lora_root)
+                    
+                # Invalidate summary cache
+                _user_data_cache = {}
+                
+                # Trigger background refresh of gallery HTML to reflect the updated metadata and paths
+                import threading
+                def bg_refresh():
+                    try:
+                        from main import refresh_gallery
+                        refresh_gallery(self.lora_root)
+                    except Exception as ex:
+                        log_operation(f"Error refreshing gallery HTML after clearing user data: {ex}")
+                threading.Thread(target=bg_refresh, daemon=True).start()
+                
                 self.send_success_response({
                     "status": "success", 
                     "message": "User data cleared",
@@ -410,7 +562,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                         "notes": "",
                         "rating": 0,
                         "collections": []
-                    }
+                    },
+                    "new_relative_path": new_relative_path
                 })
                 return
 
@@ -472,15 +625,41 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 
             log_operation(f"Saved user data sidecar: {user_data_path}")
 
+            from organizer import organize_lora_file, get_target_folder
+            
+            # Compute new path before organization
+            new_target_folder = get_target_folder(target_model_file, self.lora_root)
+            new_relative_path = (new_target_folder / target_model_file.name).resolve().relative_to(self.lora_root.resolve()).as_posix()
+
+            # Automatically organize sibling model files to the target folder
+            sibling_models = []
+            for ext in LORA_EXTENSIONS:
+                for f in target_folder.glob(f"*{ext}"):
+                    if is_lora_file(f):
+                        sibling_models.append(f)
+                        
+            for model_file in sibling_models:
+                organize_lora_file(model_file, self.lora_root)
+                
             # Invalidate the in-memory summary cache so the next /api/user_data_summary
             # request reflects this write without waiting for the TTL to expire.
-            global _user_data_cache
             _user_data_cache = {}
+
+            # Trigger background refresh of gallery HTML to reflect the updated metadata and paths
+            import threading
+            def bg_refresh():
+                try:
+                    from main import refresh_gallery
+                    refresh_gallery(self.lora_root)
+                except Exception as ex:
+                    log_operation(f"Error refreshing gallery HTML after saving user data: {ex}")
+            threading.Thread(target=bg_refresh, daemon=True).start()
 
             self.send_success_response({
                 "status": "success",
                 "message": "User data saved successfully",
-                "user_data": existing_data
+                "user_data": existing_data,
+                "new_relative_path": new_relative_path
             })
             
         except json.JSONDecodeError:
@@ -587,6 +766,160 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(500, f"Server Error: {e}")
 
 
+    # ── Management Dashboard ──────────────────────────────────────────────────
+
+    def handle_manage_page(self):
+        """Serve the /manage dashboard HTML page."""
+        try:
+            from manage_page import build_manage_page
+            html = build_manage_page(self.lora_root).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html)))
+            self.end_headers()
+            self.wfile.write(html)
+        except Exception as e:
+            self.send_error_response(500, f"Error building manage page: {e}")
+
+    def handle_get_stats(self):
+        """Return quick library stats as JSON."""
+        try:
+            from manage_page import get_library_stats
+            stats = get_library_stats(self.lora_root)
+            self.send_success_response(stats)
+        except Exception as e:
+            self.send_error_response(500, f"Error computing stats: {e}")
+
+    def handle_get_settings(self):
+        """Return current settings (api key masked, dry_run, verbose)."""
+        try:
+            from config import get_civitai_api_key, is_dry_run, is_verbose
+            key = get_civitai_api_key()
+            self.send_success_response({
+                "api_key": key,
+                "dry_run": is_dry_run(),
+                "verbose": is_verbose(),
+            })
+        except Exception as e:
+            self.send_error_response(500, f"Error reading settings: {e}")
+
+    def handle_post_settings(self):
+        """Update settings from the dashboard form."""
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            from config import set_civitai_api_key, set_dry_run, set_verbose
+            api_key = body.get("api_key", "").strip()
+            if api_key:
+                set_civitai_api_key(api_key)
+            set_dry_run(bool(body.get("dry_run", False)))
+            set_verbose(bool(body.get("verbose", True)))
+            self.send_success_response({"ok": True})
+        except Exception as e:
+            self.send_error_response(500, f"Error saving settings: {e}")
+
+    def handle_run_task(self, action: str):
+        """Start a background task. Returns immediately; logs are streamed via SSE."""
+        global _task_running, _task_log_queue
+        valid_actions = {
+            "sync", "quick-refresh", "organize",
+            "download-previews", "download-metadata", "rebuild-gallery",
+        }
+        if action not in valid_actions:
+            self.send_error_response(400, f"Unknown action: {action}")
+            return
+
+        if not _task_lock.acquire(blocking=False):
+            self.send_error_response(409, "A task is already running. Please wait.")
+            return
+
+        _task_running = True
+        # Drain the queue before starting fresh
+        while not _task_log_queue.empty():
+            try:
+                _task_log_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        lora_root = self.lora_root
+
+        def _worker():
+            global _task_running
+            import io, contextlib
+
+            class _QueueStream(io.TextIOBase):
+                """Redirect print() output into the SSE log queue."""
+                def write(self, s):
+                    for line in s.splitlines():
+                        if line.strip():
+                            _task_log_queue.put(line)
+                    return len(s)
+                def flush(self):
+                    pass
+
+            qs = _QueueStream()
+            try:
+                with contextlib.redirect_stdout(qs):
+                    if action == "sync":
+                        from main import run_automatic
+                        run_automatic(lora_root)
+                    elif action == "quick-refresh":
+                        from main import run_quick_refresh
+                        run_quick_refresh(lora_root)
+                    elif action == "organize":
+                        from main import run_organize
+                        run_organize(lora_root)
+                    elif action == "download-previews":
+                        from main import run_asset_job
+                        run_asset_job(lora_root, download_metadata=False, download_preview=True)
+                    elif action == "download-metadata":
+                        from main import run_asset_job
+                        run_asset_job(lora_root, download_metadata=True, download_preview=False)
+                    elif action == "rebuild-gallery":
+                        from main import refresh_gallery
+                        refresh_gallery(lora_root)
+            except Exception as ex:
+                _task_log_queue.put(f"ERROR: {ex}")
+            finally:
+                _task_log_queue.put(None)   # sentinel — signals __DONE__
+                _task_running = False
+                _task_lock.release()
+
+        threading.Thread(target=_worker, daemon=True).start()
+        self.send_success_response({"ok": True, "action": action})
+
+    def handle_log_stream(self):
+        """SSE endpoint that streams lines from _task_log_queue to the browser."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        try:
+            while True:
+                try:
+                    line = _task_log_queue.get(timeout=30)
+                except queue.Empty:
+                    # Send a keep-alive comment so the connection doesn't time out
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+                    continue
+
+                if line is None:
+                    # Sentinel — task finished
+                    self.wfile.write(b"data: __DONE__\n\n")
+                    self.wfile.flush()
+                    break
+
+                encoded = line.replace("\n", " ").encode("utf-8")
+                self.wfile.write(b"data: " + encoded + b"\n\n")
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass   # Client disconnected — just stop
+
+    # ── Shared helpers ────────────────────────────────────────────────────────
+
     def send_success_response(self, response_data):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -641,11 +974,13 @@ def start_server(lora_root: Path, port: int = 8000) -> None:
     except Exception as e:
         print(f"Warning: Could not regenerate gallery HTML on startup: {e}")
         
-    url = f"http://127.0.0.1:{actual_port}/gallery.html"
+    url         = f"http://127.0.0.1:{actual_port}/gallery.html"
+    manage_url  = f"http://127.0.0.1:{actual_port}/manage"
     print(f"\n==============================================")
     print(f"LoRA Library Server started successfully!")
     print(f"Serving LoRA Root: {lora_root}")
-    print(f"Gallery URL: {url}")
+    print(f"Gallery URL:    {url}")
+    print(f"Dashboard URL:  {manage_url}")
     print(f"==============================================")
     print("Opening browser...")
     import webbrowser

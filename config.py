@@ -7,7 +7,7 @@ from pathlib import Path
 
 APP_NAME = "LoRA Library Manager"
 VERSION = "2.0.0"
-LORA_ROOT = Path(r"E:\SD\webui-forge\models\Lora")
+LORA_ROOT = Path(r"Path to LoRA folder")  # Default LoRA root folder; can be overridden in settings.json
 LORA_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".bin"}
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 SETTINGS_FILE = Path(__file__).parent / "settings.json"
@@ -97,6 +97,10 @@ def log_operation(message: str) -> None:
 
 # Return the configured LoRA root folder.
 def get_lora_root() -> Path:
+    _settings = load_settings()
+    custom_root = _settings.get("lora_root")
+    if custom_root:
+        return Path(custom_root)
     return LORA_ROOT
 
 
@@ -125,4 +129,69 @@ def is_lora_file(path: Path) -> bool:
 # Return the CivitAI API key configured for this application.
 def get_civitai_api_key() -> str:
     return CIVITAI_API_KEY.strip()
+
+
+def normalize_for_comparison(s: str) -> str:
+    """Normalize a string by lowercasing and removing all non-alphanumeric characters."""
+    if not s:
+        return ""
+    return "".join(c for c in s.lower() if c.isalnum())
+
+
+def clean_model_collections(collections: list, folder_path: Path) -> list:
+    """Filter out collections that match the model folder name, file stems, or model names from metadata."""
+    if not collections:
+        return []
+        
+    folder_path = Path(folder_path)
+    folder_name = folder_path.name
+    normalized_targets = {normalize_for_comparison(folder_name)}
+    
+    # Add file stems of LoRA files in the folder
+    try:
+        for f in folder_path.iterdir():
+            if f.is_file() and f.suffix.lower() in LORA_EXTENSIONS:
+                normalized_targets.add(normalize_for_comparison(f.stem))
+    except Exception:
+        pass
+        
+    # Add model names and version names from metadata files in the same directory
+    try:
+        for f in folder_path.iterdir():
+            if f.is_file() and (f.suffix.lower() == '.json' or f.name.endswith('.civitai.info')):
+                try:
+                    with f.open("r", encoding="utf-8") as meta_f:
+                        meta = json.load(meta_f)
+                        if isinstance(meta, dict):
+                            # Check civitai metadata format
+                            model_obj = meta.get("model")
+                            if isinstance(model_obj, dict) and model_obj.get("name"):
+                                normalized_targets.add(normalize_for_comparison(model_obj["name"]))
+                            if meta.get("name"):
+                                normalized_targets.add(normalize_for_comparison(meta["name"]))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+        
+    cleaned = []
+    for c in collections:
+        if not c or not isinstance(c, str):
+            continue
+        c_clean = c.strip()
+        if not c_clean:
+            continue
+        # For path-like tags, check if the last component matches any normalized target.
+        # This prevents redundant folder nesting (e.g. Anime / Fate / Rin / Rin).
+        parts = [p.strip() for p in c_clean.replace('\\', '/').split('/') if p.strip()]
+        if not parts:
+            continue
+        last_part = parts[-1]
+        c_norm = normalize_for_comparison(last_part)
+        if c_norm in normalized_targets:
+            continue
+        cleaned.append(c_clean)
+        
+    return cleaned
+
 

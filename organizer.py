@@ -1,7 +1,8 @@
 """File organization tools for LoRA model libraries."""
 
+import json
 from pathlib import Path
-from shutil import move
+from shutil import move, copy2
 
 from civitai import get_model_for_safetensors
 from config import (
@@ -10,6 +11,7 @@ from config import (
     log_operation,
     is_lora_file,
     LORA_EXTENSIONS,
+    clean_model_collections,
 )
 SIDECAR_EXTENSIONS = {
     ".png",
@@ -97,7 +99,34 @@ def get_model_folder_name(lora_file: Path) -> str:
 
 # Decide which library folder should contain a LoRA file.
 def get_target_folder(lora_file: Path, library_dir: Path) -> Path:
-    return library_dir / get_model_folder_name(lora_file)
+    # 1. Determine model folder name (preserve existing parent folder name if already organized,
+    # otherwise compute from metadata/filename)
+    if lora_file.parent.resolve() != library_dir.resolve():
+        model_folder_name = lora_file.parent.name
+    else:
+        model_folder_name = get_model_folder_name(lora_file)
+
+    # 2. Check for collection tag in user_data.json
+    tag = ""
+    user_data_path = lora_file.parent / "user_data.json"
+    if user_data_path.exists():
+        try:
+            with user_data_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Use clean_model_collections to get real collection names
+            colls = clean_model_collections(data.get("collections", []), lora_file.parent)
+            if colls:
+                # We enforce only 1 tag for now
+                tag = colls[0]
+        except Exception:
+            pass
+
+    # 3. Build target folder path
+    if tag:
+        parts = [sanitize_name(p.strip()) for p in tag.replace('\\', '/').split('/') if p.strip()]
+        if parts:
+            return library_dir.joinpath(*parts) / model_folder_name
+    return library_dir / model_folder_name
 
 
 # Check whether moving this file would create a nested duplicate folder.
@@ -170,6 +199,23 @@ def organize_lora_file(lora_file: Path, library_dir: Path, target_folder: Path |
     if would_create_nested_duplicate(lora_file, folder):
         return "skipped"
 
+    # Copy user_data.json if it exists and hasn't been copied to the destination yet.
+    # We do this BEFORE moving the model file, so that the metadata is preserved,
+    # and sibling model files can still read it in the old folder before they are moved.
+    user_data_src = lora_file.parent / "user_data.json"
+    if user_data_src.exists():
+        user_data_dst = folder / "user_data.json"
+        if not user_data_dst.exists():
+            if is_dry_run():
+                log_operation(f"[DRY RUN] Would copy user data: {user_data_src} -> {user_data_dst}")
+            else:
+                try:
+                    folder.mkdir(parents=True, exist_ok=True)
+                    copy2(user_data_src, user_data_dst)
+                    log_operation(f"Copied user data sidecar: {user_data_src} -> {user_data_dst}")
+                except Exception as e:
+                    log_operation(f"Error copying user data sidecar: {e}")
+
     sidecar_files = find_sidecar_files(lora_file)
 
     if not move_without_overwrite(lora_file, target_path):
@@ -179,12 +225,15 @@ def organize_lora_file(lora_file: Path, library_dir: Path, target_folder: Path |
         sidecar_target = folder / sidecar_file.name
         move_without_overwrite(sidecar_file, sidecar_target)
 
-    # Clean up parent directory if no other model files remain in it
-    parent_dir = lora_file.parent
-    if parent_dir.resolve() != library_dir.resolve() and parent_dir.is_dir():
+    # Clean up parent directory and any empty ancestor directories up to library_dir
+    current_dir = lora_file.parent
+    library_resolved = library_dir.resolve()
+    
+    while current_dir.resolve() != library_resolved and current_dir.is_dir():
+        # Check if current_dir has any model files inside it recursively
         has_remaining_models = False
         for ext in LORA_EXTENSIONS:
-            for f in parent_dir.glob(f"*{ext}"):
+            for f in current_dir.rglob(f"*{ext}"):
                 if is_lora_file(f):
                     has_remaining_models = True
                     break
@@ -193,14 +242,33 @@ def organize_lora_file(lora_file: Path, library_dir: Path, target_folder: Path |
                 
         if not has_remaining_models:
             try:
-                # Delete any remaining non-model files (like metadata.json)
-                for extra in list(parent_dir.glob("*")):
+                # Delete any remaining non-model files or empty subdirectories inside current_dir
+                for extra in list(current_dir.glob("*")):
                     if extra.is_file():
-                        extra.unlink()
-                parent_dir.rmdir()
-                log_operation(f"Removed empty folder after organizing: {parent_dir}")
+                        if is_dry_run():
+                            log_operation(f"[DRY RUN] Would remove file: {extra}")
+                        else:
+                            extra.unlink()
+                    elif extra.is_dir():
+                        try:
+                            if is_dry_run():
+                                log_operation(f"[DRY RUN] Would remove directory: {extra}")
+                            else:
+                                extra.rmdir()
+                        except OSError:
+                            pass
+                if is_dry_run():
+                    log_operation(f"[DRY RUN] Would remove empty folder after organizing: {current_dir}")
+                else:
+                    current_dir.rmdir()
+                    log_operation(f"Removed empty folder after organizing: {current_dir}")
             except OSError as e:
-                log_operation(f"Error cleaning up parent folder {parent_dir}: {e}")
+                log_operation(f"Error cleaning up parent folder {current_dir}: {e}")
+                break
+        else:
+            break
+        # Move up to parent
+        current_dir = current_dir.parent
 
     return "organized"
 

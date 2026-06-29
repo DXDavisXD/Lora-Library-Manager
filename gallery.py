@@ -315,6 +315,7 @@ def build_gallery_entry(lora_file: Path) -> dict:
         "file_stem": lora_file.stem,
         "filename": lora_file.name,
         "mtime": int(lora_file.stat().st_mtime),
+        "size": lora_file.stat().st_size,
         "description": get_description(metadata),
         "trigger_words": get_trigger_words(metadata),
         "trigger_groups": parse_trigger_groups(metadata),
@@ -605,10 +606,11 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
             "trigger_words": v_trigger_words,
             "trigger_groups_html": v_groups_html,
             "base_model": ver["base_model"],
-            "description": clean_html_text(ver["description"]),
+            "description": ver["description"],
             "sha256": ver["sha256"],
             "relative_path": ver["relative_path"],
-            "mtime": ver["mtime"]
+            "mtime": ver["mtime"],
+            "size": ver.get("size", 0)
         })
         
     t_groups = latest_ver.get("trigger_groups", [])
@@ -633,6 +635,7 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                   data-triggers="{escape_text(trigger_text)}"
                   data-creator="{escape_text(group.get('creator', ''))}"
                   data-base-model="{escape_text(latest_ver.get('base_model', ''))}"
+                  data-size="{latest_ver.get('size', 0)}"
                   data-description="{escape_text(desc_clean)}"
                   data-tags="{escape_text(json.dumps(group.get('tags', [])))}"
                   data-official-triggers="{escape_text(json.dumps(trigger_words))}"
@@ -648,7 +651,7 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                     </svg>
                 </button>
                 {f'''
-                <div class="creator-badge">
+                <div class="creator-badge" onclick="filterByCreator(event, '{escape_text(group.get("creator", ""))}')">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
                         <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
@@ -702,8 +705,38 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
 
 
 def group_entries(entries: list[dict]) -> list[dict]:
-    grouped = {}
+    # Deduplicate entries by SHA256 to avoid showing duplicate cards for copy/backup files.
+    # Prefer the entry that has more complete metadata.
+    sha_map = {}
     for entry in entries:
+        sha = entry.get("sha256")
+        if sha and sha != "unavailable":
+            if sha not in sha_map:
+                sha_map[sha] = entry
+            else:
+                # Compare completeness
+                existing = sha_map[sha]
+                existing_score = 0
+                if existing.get("model_id"): existing_score += 10
+                if existing.get("trigger_words"): existing_score += len(existing.get("trigger_words"))
+                if existing.get("description"): existing_score += 5
+                
+                entry_score = 0
+                if entry.get("model_id"): entry_score += 10
+                if entry.get("trigger_words"): entry_score += len(entry.get("trigger_words"))
+                if entry.get("description"): entry_score += 5
+                
+                if entry_score > existing_score:
+                    sha_map[sha] = entry
+        else:
+            # Keep entries without SHA256 as unique entries
+            dummy_key = f"no_sha_{len(sha_map)}"
+            sha_map[dummy_key] = entry
+            
+    deduplicated = list(sha_map.values())
+
+    grouped = {}
+    for entry in deduplicated:
         model_id = entry.get("model_id") or ""
         folder_name = entry.get("folder_name", "")
         
@@ -1221,14 +1254,22 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             font-weight: 600;
             color: rgba(255, 255, 255, 0.75);
             letter-spacing: 0.02em;
-            pointer-events: none;
+            pointer-events: auto;
+            cursor: pointer;
             max-width: 140px;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
             opacity: 0.85;
             z-index: 5;
-            transition: opacity 0.2s ease;
+            transition: all 0.2s ease;
+        }}
+
+        .creator-badge:hover {{
+            background: var(--accent);
+            color: #ffffff;
+            border-color: var(--accent);
+            opacity: 1;
         }}
 
         .creator-badge svg {{
@@ -1357,15 +1398,34 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            margin-bottom: 12px;
+            height: 160px;
+            position: relative;
+        }}
+
+        /* Fade-out gradient at the bottom of overflow trigger words */
+        .card-trigger-section::after {{
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: linear-gradient(to bottom, transparent, var(--panel));
+            pointer-events: none;
+        }}
+
+        /* Inside a card, trigger container scrolls — fade at bottom masks the scrollbar edge */
+        .card .card-trigger-section .trigger-groups-container {{
+            min-height: 0;
+            max-height: 160px;
+            overflow-y: auto;
+            scrollbar-width: none; /* Firefox */
             margin-bottom: 0;
         }}
 
-        /* Inside a card, the trigger container scrolls when it has many items */
-        .card .card-trigger-section .trigger-groups-container {{
-            min-height: 0;
-            max-height: 130px; /* ~3 trigger rows before scroll kicks in */
-            overflow-y: auto;
-            margin-bottom: 0;
+        .card .card-trigger-section .trigger-groups-container::-webkit-scrollbar {{
+            display: none; /* Chrome/Safari — fade is the visual cue */
         }}
 
         h2 {{
@@ -1530,7 +1590,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .card-footer {{
             margin-top: auto;
-            padding-top: 16px;
+            padding-top: 10px;
             display: flex;
             gap: 8px;
         }}
@@ -1541,7 +1601,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border: 1px solid rgba(99, 102, 241, 0.2);
             border-radius: 8px;
             color: #a5b4fc;
-            padding: 10px 12px;
+            padding: 6px 10px;
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
@@ -2551,6 +2611,36 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             padding-right: 6px;
         }}
 
+        .modal-description-text a {{
+            color: #818cf8;
+            text-decoration: underline;
+        }}
+        .modal-description-text a:hover {{
+            color: #a5b4fc;
+        }}
+        .modal-description-text ul, .modal-description-text ol {{
+            padding-left: 20px;
+            margin: 8px 0;
+        }}
+        .modal-description-text li {{
+            margin: 4px 0;
+        }}
+        .modal-description-text p {{
+            margin: 8px 0;
+        }}
+        .modal-description-text h1, .modal-description-text h2, .modal-description-text h3 {{
+            color: var(--text);
+            margin: 12px 0 6px 0;
+            font-size: 14px;
+            font-weight: 700;
+        }}
+        .modal-description-text code {{
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+        }}
+
         /* In 3-column layout the description section grows to fill leftover space */
         .modal-body.three-column .modal-middle #modal-section-description {{
             flex: 1;
@@ -2594,6 +2684,25 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             padding: 2px 8px;
             border-radius: 6px;
             font-weight: 600;
+        }}
+
+        .modal-input-field {{
+            width: 100%;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 10px 12px;
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: var(--transition);
+            box-sizing: border-box;
+        }}
+
+        .modal-input-field:focus {{
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.05);
         }}
 
         /* Notes Textarea */
@@ -3087,6 +3196,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         <span class="chip-text">Library</span>
                         <span class="chip-arrow">▼</span>
                     </div>
+                    <div id="creator-chip" class="collection-chip active-filter" style="display: none; margin-right: 8px;">
+                        <span class="chip-icon">👤</span>
+                        <span class="chip-text" id="creator-chip-text"></span>
+                        <span class="chip-clear" id="creator-chip-clear" title="Clear creator filter">✕</span>
+                    </div>
                     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="11" cy="11" r="8"/>
                         <line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -3102,6 +3216,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                             <input id="popup-search-input" type="text" placeholder="Search collections..." autocomplete="off">
                         </div>
                         <div id="popup-collections-list" class="popup-collections-list"></div>
+                        <div class="popup-footer" style="padding: 8px; border-top: 1px solid var(--border); display: flex; justify-content: center; background: rgba(0, 0, 0, 0.2);">
+                            <button id="btn-manage-collections" style="background: var(--accent); border: none; color: white; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; width: 100%; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.8" onmouseout="this.style.opacity=1.0" type="button">⚙️ Manage Collections</button>
+                        </div>
                     </div>
                 </div>
                 <div class="select-wrapper" style="width: 150px;">
@@ -3134,6 +3251,28 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         </section>
         <p id="empty" class="empty">No matching LoRAs found.</p>
     </main>
+
+    <!-- Manage Collections Modal -->
+    <div id="manage-collections-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="manage-title" style="z-index: 10000;">
+        <div class="modal-container" style="max-width: 500px; height: 600px; display: flex; flex-direction: column;">
+            <button class="modal-close" id="manage-modal-close" aria-label="Close modal">
+                <svg class="close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <div style="padding: 24px; display: flex; flex-direction: column; height: 100%; min-height: 0;">
+                <h2 id="manage-title" style="margin-top: 0; margin-bottom: 16px; font-size: 20px; font-weight: 700; color: var(--text);">Manage Collections</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">Rename or merge collections. Renaming a parent category will automatically rename all its subcategories on disk.</p>
+                <div id="manage-collections-list" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                    <!-- dynamically populated -->
+                </div>
+                <div style="display: flex; justify-content: flex-end;">
+                    <button id="manage-modal-btn-close" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: var(--text); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;" type="button">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Details Modal -->
     <div id="details-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
@@ -3260,36 +3399,48 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                             
                             <!-- Collections -->
                             <div class="modal-section">
-                                <h3>Collections</h3>
-                                <div class="collections-container">
-                                    <div class="collections-box" style="min-height: 50px; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255, 255, 255, 0.01); display: flex; flex-direction: column; justify-content: center; align-items: center; width: 100%; box-sizing: border-box; margin-bottom: 8px;">
-                                        <div id="modal-collections-placeholder" style="color: var(--text-muted); font-size: 13px; text-align: center;">
-                                            — No collections assigned —
+                                <h3>Collection (Nested Tag)</h3>
+                                <div class="collections-container" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                                    <!-- Category (Parent) Input -->
+                                    <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; position: relative;">
+                                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Category (e.g. Anime, Concept)</label>
+                                        <div class="custom-dropdown-wrapper" style="position: relative; width: 100%;">
+                                            <input id="modal-input-parent-collection" class="modal-input-field" type="text" placeholder="Select or type category..." autocomplete="off">
+                                            <span class="custom-dropdown-arrow" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted); pointer-events: none;">▼</span>
                                         </div>
-                                        <div id="modal-collections-chips-list" class="modal-tags-container" style="width: 100%; justify-content: center;">
-                                            <!-- Collection chips display like: [ Oshi no Ko x ] -->
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="collections-actions-container" style="position: relative;">
-                                        <button id="btn-show-add-collection-popup" class="btn-action-secondary" type="button" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
-                                            <span>+ Add Collection</span>
-                                        </button>
-                                        
-                                        <!-- Searchable Multi-Select Collections Popup -->
-                                        <div id="modal-collections-popup" class="collections-popup" hidden style="width: 100%; box-sizing: border-box;">
-                                            <div class="popup-search-wrapper">
-                                                <svg class="popup-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <div id="modal-parent-collections-popup" class="collections-popup" hidden style="width: 100%; box-sizing: border-box; max-height: 320px; display: flex; flex-direction: column;">
+                                            <div class="popup-search-wrapper" style="padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                                                <svg class="popup-search-icon" style="width: 14px; height: 14px; color: var(--text-muted); flex-shrink: 0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                     <circle cx="11" cy="11" r="8"/>
                                                     <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                                                 </svg>
-                                                <input id="modal-popup-collections-search" type="text" placeholder="Search collections..." autocomplete="off">
+                                                <input id="modal-parent-collections-search" type="text" placeholder="Search categories..." autocomplete="off" style="background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; flex: 1;">
                                             </div>
-                                            <div id="modal-popup-collections-list" class="popup-collections-list">
-                                                <!-- Populated with Recently Used & All Collections -->
-                                            </div>
+                                            <div id="modal-parent-collections-list" class="popup-collections-list" style="flex: 1; max-height: 200px; overflow-y: auto;"></div>
                                             <div class="popup-footer">
-                                                <button id="modal-collections-done-btn" class="btn-mini" type="button" style="height: 30px; line-height: 30px; padding: 0 16px;">Done</button>
+                                                <button class="btn-action-primary" style="padding: 4px 12px; font-size: 12px;" type="button">Done</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Sub-Category (Child) Input -->
+                                    <div id="modal-sub-collection-wrapper" style="display: none; flex-direction: column; gap: 4px; width: 100%; position: relative;">
+                                        <label style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Sub-Category (e.g. Fate, Gridman)</label>
+                                        <div class="custom-dropdown-wrapper" style="position: relative; width: 100%;">
+                                            <input id="modal-input-sub-collection" class="modal-input-field" type="text" placeholder="Select or type subcategory..." autocomplete="off">
+                                            <span class="custom-dropdown-arrow" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted); pointer-events: none;">▼</span>
+                                        </div>
+                                        <div id="modal-sub-collections-popup" class="collections-popup" hidden style="width: 100%; box-sizing: border-box; max-height: 320px; display: flex; flex-direction: column;">
+                                            <div class="popup-search-wrapper" style="padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;">
+                                                <svg class="popup-search-icon" style="width: 14px; height: 14px; color: var(--text-muted); flex-shrink: 0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <circle cx="11" cy="11" r="8"/>
+                                                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                                </svg>
+                                                <input id="modal-sub-collections-search" type="text" placeholder="Search subcategories..." autocomplete="off" style="background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; flex: 1;">
+                                            </div>
+                                            <div id="modal-sub-collections-list" class="popup-collections-list" style="flex: 1; max-height: 200px; overflow-y: auto;"></div>
+                                            <div class="popup-footer">
+                                                <button class="btn-action-primary" style="padding: 4px 12px; font-size: 12px;" type="button">Done</button>
                                             </div>
                                         </div>
                                     </div>
@@ -3435,6 +3586,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         let currentWeight = localStorage.getItem(WEIGHT_KEY) || "1.0";
         let activeCollection = "Library"; // Default state
+        let activeCreator = "";
 
         const SYSTEM_COLLECTIONS = [
             {{
@@ -3528,7 +3680,15 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 if (sysColl) {{
                     matchesCollection = sysColl.matches(card, cardColls, isFav);
                 }} else {{
-                    matchesCollection = cardColls.some(c => c.toLowerCase() === activeCollection.toLowerCase());
+                    matchesCollection = cardColls.some(c => {{
+                        const cParts = c.toLowerCase().split(/\s*[\/\\\\]\s*/);
+                        const filterParts = activeCollection.toLowerCase().split(/\s*[\/\\\\]\s*/);
+                        if (filterParts.length > cParts.length) return false;
+                        for (let i = 0; i < filterParts.length; i++) {{
+                            if (cParts[i] !== filterParts[i]) return false;
+                        }}
+                        return true;
+                    }});
                 }}
                 
                 let matchesBaseModel = true;
@@ -3537,7 +3697,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     matchesBaseModel = (cardBaseModel === selectedBaseModel);
                 }}
                 
-                const matches = matchesSearch && matchesCollection && matchesBaseModel;
+                let matchesCreator = true;
+                if (activeCreator) {{
+                    matchesCreator = (card.dataset.creator === activeCreator);
+                }}
+                
+                const matches = matchesSearch && matchesCollection && matchesBaseModel && matchesCreator;
                 card.hidden = !matches;
 
                 if (matches) {{
@@ -4298,7 +4463,25 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         let currentPersonalTriggers = [];
         let currentCollections = [];
         let currentRating = 0;
+        let rawGlobalCollections = [];
         let globalCollections = [];
+        const expandedParents = new Set();
+
+        function setGlobalCollections(colls) {{
+            rawGlobalCollections = colls || [];
+            const set = new Set();
+            rawGlobalCollections.forEach(c => {{
+                if (c && typeof c === 'string') {{
+                    const parts = c.split(/\s*[\/\\\\]\s*/);
+                    let path = "";
+                    for (let i = 0; i < parts.length; i++) {{
+                        path = path ? path + " / " + parts[i] : parts[i];
+                        set.add(path);
+                    }}
+                }}
+            }});
+            globalCollections = Array.from(set);
+        }}
         
         const RECENT_COLLECTIONS_KEY = "lora_gallery_recent_collections";
         let recentCollections = [];
@@ -4318,7 +4501,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             return fetch("/api/collections")
                 .then(res => res.json())
                 .then(data => {{
-                    globalCollections = data.collections || [];
+                    setGlobalCollections(data.collections);
                     updateCollectionFilterOptions();
                 }})
                 .catch(err => console.error("Error loading collections:", err));
@@ -4465,7 +4648,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
             // Render interactive lists
             renderRating(currentRating);
-            renderModalCollectionChips();
+            initializeModalCollectionInputs();
             renderModalNotes(notes);
             renderPersonalTriggers();
 
@@ -4731,43 +4914,366 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             return globalCollections.find(c => c.toLowerCase() === normalized);
         }}
 
-        function renderModalCollectionChips() {{
-            const container = document.getElementById("modal-collections-chips-list");
-            const placeholder = document.getElementById("modal-collections-placeholder");
-            if (!container) return;
-            
-            container.innerHTML = "";
-            
-            if (currentCollections.length === 0) {{
-                if (placeholder) placeholder.style.display = "block";
-            }} else {{
-                if (placeholder) placeholder.style.display = "none";
-                currentCollections.forEach(name => {{
-                    const chip = document.createElement("span");
-                    chip.className = "collection-chip-modal";
-                    chip.innerHTML = `
-                        <span class="collection-chip-modal-text">${{escapeHTML(name)}}</span>
-                        <button class="btn-remove-chip" type="button" aria-label="Remove collection ${{escapeHTML(name)}}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 11px; height: 11px; display: block;">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
-                        </button>
-                    `;
-                    chip.querySelector(".btn-remove-chip").addEventListener("click", (e) => {{
-                        e.stopPropagation();
-                        currentCollections = currentCollections.filter(c => c !== name);
-                        renderModalCollectionChips();
-                        // If popup is open, update its checklist checkmarks too
-                        const popup = document.getElementById("modal-collections-popup");
-                        if (popup && !popup.hidden) {{
-                            renderModalCollectionsPopupList(document.getElementById("modal-popup-collections-search").value);
-                        }}
-                        autoSaveUserData();
-                    }});
-                    container.appendChild(chip);
-                }});
+        function createNewCollectionGlobally(name, onCreated) {{
+            const normalized = normalizeCollectionName(name);
+            const existing = findExistingCollectionCaseInsensitive(normalized);
+            if (existing) {{
+                onCreated(existing);
+                return;
             }}
+            
+            fetch("/api/collections", {{
+                method: "POST",
+                headers: {{
+                    "Content-Type": "application/json"
+                }},
+                body: JSON.stringify({{ name: normalized }})
+            }})
+            .then(res => {{
+                if (!res.ok) throw new Error("Failed to save collection globally");
+                return res.json();
+            }})
+            .then(data => {{
+                setGlobalCollections(data.collections);
+                const serverCased = findExistingCollectionCaseInsensitive(normalized) || normalized;
+                onCreated(serverCased);
+                updateCollectionFilterOptions();
+            }})
+            .catch(err => {{
+                console.error("Error creating collection:", err);
+                if (!globalCollections.includes(normalized)) {{
+                    setGlobalCollections([...rawGlobalCollections, normalized]);
+                }}
+                onCreated(normalized);
+            }});
+        }}
+
+        function updateModalCollectionInputs() {{
+            const parentInput = document.getElementById("modal-input-parent-collection");
+            const subWrapper = document.getElementById("modal-sub-collection-wrapper");
+            const subInput = document.getElementById("modal-input-sub-collection");
+            const parentList = document.getElementById("modal-parent-collections-list");
+            const subList = document.getElementById("modal-sub-collections-list");
+            const parentPopup = document.getElementById("modal-parent-collections-popup");
+            const subPopup = document.getElementById("modal-sub-collections-popup");
+            
+            if (!parentInput || !parentList || !subList || !subInput) return;
+            
+            const counts = getCollectionCounts();
+            
+            // 1. Populate parent categories list
+            parentList.innerHTML = "";
+            
+            // Header
+            const parentHeader = document.createElement("div");
+            parentHeader.className = "popup-header";
+            parentHeader.style.padding = "6px 12px";
+            parentHeader.style.fontSize = "11px";
+            parentHeader.style.fontWeight = "bold";
+            parentHeader.style.color = "var(--accent)";
+            parentHeader.style.textTransform = "uppercase";
+            parentHeader.style.borderBottom = "1px solid var(--border)";
+            parentHeader.style.marginBottom = "4px";
+            parentHeader.innerHTML = `
+                <span class="popup-item-icon" style="margin-right: 6px;">🥞</span>
+                <span>ALL CATEGORIES</span>
+            `;
+            parentList.appendChild(parentHeader);
+            
+            // Get unique top-level categories
+            const parents = new Set();
+            rawGlobalCollections.forEach(c => {{
+                if (c && typeof c === 'string') {{
+                    const parts = c.split(/\s*[\/\\\\]\s*/);
+                    if (parts[0]) parents.add(parts[0]);
+                }}
+            }});
+            
+            const sortedParents = Array.from(parents).sort();
+            const parentSearchInput = document.getElementById("modal-parent-collections-search");
+            const parentTyped = parentSearchInput ? parentSearchInput.value.trim() : "";
+            const parentTypedLower = parentTyped.toLowerCase();
+            
+            // Filter parents
+            const filteredParents = sortedParents.filter(p => !parentTyped || p.toLowerCase().includes(parentTypedLower));
+            
+            // Show "Create Category" option if typing something that is not an exact match
+            const exactParentMatch = sortedParents.some(p => p.toLowerCase() === parentTypedLower);
+            if (parentTyped && !exactParentMatch) {{
+                const createItem = document.createElement("div");
+                createItem.className = "popup-item";
+                createItem.style.fontWeight = "600";
+                createItem.style.color = "var(--accent)";
+                createItem.innerHTML = `
+                    <span style="margin-right: 8px;">➕</span>
+                    <span>Create "${{escapeHTML(parentTyped)}}"</span>
+                `;
+                createItem.addEventListener("mousedown", (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    createNewCollectionGlobally(parentTyped, (name) => {{
+                        const parts = name.split(/\s*[\/\\\\]\s*/);
+                        parentInput.value = parts[0] || name;
+                        subInput.value = parts.slice(1).join(" / ") || "";
+                        if (parentPopup) parentPopup.hidden = true;
+                        updateModalCollectionInputs();
+                        saveModalCollectionsFromInputs();
+                    }});
+                }});
+                parentList.appendChild(createItem);
+            }}
+            
+            // Get currently active category
+            const activeParentVal = parentInput.value.trim();
+            const activeParentLower = activeParentVal.toLowerCase();
+            
+            if (filteredParents.length > 0) {{
+                filteredParents.forEach(p => {{
+                    const item = document.createElement("div");
+                    item.className = "popup-item";
+                    item.style.display = "flex";
+                    item.style.justifyContent = "space-between";
+                    item.style.alignItems = "center";
+                    item.style.width = "100%";
+                    item.style.boxSizing = "border-box";
+                    
+                    const isActive = activeParentLower === p.toLowerCase();
+                    if (isActive) {{
+                        item.classList.add("active");
+                    }}
+                    
+                    const count = counts[p] || 0;
+                    
+                    const nameContainer = document.createElement("div");
+                    nameContainer.style.display = "flex";
+                    nameContainer.style.alignItems = "center";
+                    nameContainer.style.flex = "1";
+                    nameContainer.style.overflow = "hidden";
+                    nameContainer.style.textOverflow = "ellipsis";
+                    nameContainer.style.whiteSpace = "nowrap";
+                    
+                    const checkSpan = document.createElement("span");
+                    checkSpan.className = "popup-item-check";
+                    checkSpan.textContent = isActive ? "✓" : "";
+                    nameContainer.appendChild(checkSpan);
+                    
+                    const nameSpan = document.createElement("span");
+                    nameSpan.className = "popup-item-name";
+                    nameSpan.textContent = p + " (" + count + ")";
+                    nameContainer.appendChild(nameSpan);
+                    
+                    item.appendChild(nameContainer);
+                    
+                    const delBtn = document.createElement("button");
+                    delBtn.className = "btn-delete-collection-popup";
+                    delBtn.type = "button";
+                    delBtn.textContent = "✕";
+                    delBtn.title = "Delete category '" + p + "' globally";
+                    delBtn.addEventListener("mousedown", (e) => {{
+                        e.stopPropagation();
+                        e.preventDefault();
+                        deleteCollectionGlobally(p);
+                    }});
+                    item.appendChild(delBtn);
+                    
+                    item.addEventListener("mousedown", (e) => {{
+                        if (e.target.closest(".btn-delete-collection-popup")) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        parentInput.value = p;
+                        if (activeParentLower !== p.toLowerCase()) {{
+                            subInput.value = "";
+                        }}
+                        if (parentPopup) parentPopup.hidden = true;
+                        updateModalCollectionInputs();
+                        saveModalCollectionsFromInputs();
+                    }});
+                    
+                    parentList.appendChild(item);
+                }});
+            }} else if (!parentTyped) {{
+                const item = document.createElement("div");
+                item.className = "popup-item text-muted";
+                item.style.justifyContent = "center";
+                item.style.fontSize = "12px";
+                item.textContent = "No categories found";
+                parentList.appendChild(item);
+            }}
+            
+            // 2. Populate subcategories list based on currently typed parent
+            subList.innerHTML = "";
+            const activeParent = parentInput.value.trim();
+            if (activeParent) {{
+                if (subWrapper) subWrapper.style.display = "flex";
+                
+                // Header
+                const subHeader = document.createElement("div");
+                subHeader.className = "popup-header";
+                subHeader.style.padding = "6px 12px";
+                subHeader.style.fontSize = "11px";
+                subHeader.style.fontWeight = "bold";
+                subHeader.style.color = "var(--accent)";
+                subHeader.style.textTransform = "uppercase";
+                subHeader.style.borderBottom = "1px solid var(--border)";
+                subHeader.style.marginBottom = "4px";
+                subHeader.innerHTML = `
+                    <span class="popup-item-icon" style="margin-right: 6px;">📂</span>
+                    <span>Sub-category suggestions</span>
+                `;
+                subList.appendChild(subHeader);
+                
+                const subs = new Set();
+                rawGlobalCollections.forEach(c => {{
+                    if (c && typeof c === 'string') {{
+                        const parts = c.split(/\s*[\/\\\\]\s*/);
+                        if (parts[0] && parts[0].toLowerCase() === activeParent.toLowerCase() && parts[1]) {{
+                            subs.add(parts.slice(1).join(" / "));
+                        }}
+                    }}
+                }});
+                
+                const sortedSubs = Array.from(subs).sort();
+                const subSearchInput = document.getElementById("modal-sub-collections-search");
+                const subTyped = subSearchInput ? subSearchInput.value.trim() : "";
+                const subTypedLower = subTyped.toLowerCase();
+                const filteredSubs = sortedSubs.filter(s => !subTyped || s.toLowerCase().includes(subTypedLower));
+                
+                // Show "Create Sub-Category" option if typing something that is not an exact match
+                const exactSubMatch = sortedSubs.some(s => s.toLowerCase() === subTypedLower);
+                if (subTyped && !exactSubMatch) {{
+                    const createItem = document.createElement("div");
+                    createItem.className = "popup-item";
+                    createItem.style.fontWeight = "600";
+                    createItem.style.color = "var(--accent)";
+                    createItem.innerHTML = `
+                        <span style="margin-right: 8px;">➕</span>
+                        <span>Create "${{escapeHTML(subTyped)}}"</span>
+                    `;
+                    createItem.addEventListener("mousedown", (e) => {{
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const fullTag = activeParent + " / " + subTyped;
+                        createNewCollectionGlobally(fullTag, (name) => {{
+                            const parts = name.split(/\s*[\/\\\\]\s*/);
+                            subInput.value = parts.slice(1).join(" / ") || subTyped;
+                            if (subPopup) subPopup.hidden = true;
+                            updateModalCollectionInputs();
+                            saveModalCollectionsFromInputs();
+                        }});
+                    }});
+                    subList.appendChild(createItem);
+                }}
+                
+                if (filteredSubs.length > 0) {{
+                    filteredSubs.forEach(s => {{
+                        const item = document.createElement("div");
+                        item.className = "popup-item";
+                        item.style.display = "flex";
+                        item.style.justifyContent = "space-between";
+                        item.style.alignItems = "center";
+                        item.style.width = "100%";
+                        item.style.boxSizing = "border-box";
+                        
+                        const isActive = subInput.value.trim().toLowerCase() === s.toLowerCase();
+                        if (isActive) {{
+                            item.classList.add("active");
+                        }}
+                        
+                        const fullPath = activeParent + " / " + s;
+                        const count = counts[fullPath] || 0;
+                        
+                        const nameContainer = document.createElement("div");
+                        nameContainer.style.display = "flex";
+                        nameContainer.style.alignItems = "center";
+                        nameContainer.style.flex = "1";
+                        nameContainer.style.overflow = "hidden";
+                        nameContainer.style.textOverflow = "ellipsis";
+                        nameContainer.style.whiteSpace = "nowrap";
+                        
+                        const checkSpan = document.createElement("span");
+                        checkSpan.className = "popup-item-check";
+                        checkSpan.textContent = isActive ? "✓" : "";
+                        nameContainer.appendChild(checkSpan);
+                        
+                        const nameSpan = document.createElement("span");
+                        nameSpan.className = "popup-item-name";
+                        nameSpan.textContent = s + " (" + count + ")";
+                        nameContainer.appendChild(nameSpan);
+                        
+                        item.appendChild(nameContainer);
+                        
+                        const delBtn = document.createElement("button");
+                        delBtn.className = "btn-delete-collection-popup";
+                        delBtn.type = "button";
+                        delBtn.textContent = "✕";
+                        delBtn.title = "Delete subcategory '" + s + "' globally";
+                        delBtn.addEventListener("mousedown", (e) => {{
+                            e.stopPropagation();
+                            e.preventDefault();
+                            deleteCollectionGlobally(fullPath);
+                        }});
+                        item.appendChild(delBtn);
+                        
+                        item.addEventListener("mousedown", (e) => {{
+                            if (e.target.closest(".btn-delete-collection-popup")) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            subInput.value = s;
+                            if (subPopup) subPopup.hidden = true;
+                            updateModalCollectionInputs();
+                            saveModalCollectionsFromInputs();
+                        }});
+                        
+                        subList.appendChild(item);
+                    }});
+                }} else if (!subTyped) {{
+                    const item = document.createElement("div");
+                    item.className = "popup-item text-muted";
+                    item.style.justifyContent = "center";
+                    item.style.fontSize = "12px";
+                    item.textContent = "No subcategories found";
+                    subList.appendChild(item);
+                }}
+            }} else {{
+                if (subWrapper) subWrapper.style.display = "none";
+                subInput.value = "";
+            }}
+        }}
+
+        function saveModalCollectionsFromInputs() {{
+            const parentInput = document.getElementById("modal-input-parent-collection");
+            const subInput = document.getElementById("modal-input-sub-collection");
+            if (!parentInput || !subInput) return;
+            
+            const parentVal = parentInput.value.trim();
+            const subVal = subInput.value.trim();
+            
+            if (!parentVal) {{
+                currentCollections = [];
+            }} else if (!subVal) {{
+                currentCollections = [parentVal];
+            }} else {{
+                currentCollections = [`${{parentVal}} / ${{subVal}}`];
+            }}
+            
+            autoSaveUserData();
+        }}
+
+        function initializeModalCollectionInputs() {{
+            let parentVal = "";
+            let subVal = "";
+            if (currentCollections.length > 0) {{
+                const tag = currentCollections[0];
+                const parts = tag.split(/\s*[\/\\\\]\s*/);
+                parentVal = parts[0] || "";
+                subVal = parts.slice(1).join(" / ") || "";
+            }}
+            const parentInput = document.getElementById("modal-input-parent-collection");
+            const subInput = document.getElementById("modal-input-sub-collection");
+            if (parentInput) parentInput.value = parentVal;
+            if (subInput) subInput.value = subVal;
+            
+            updateModalCollectionInputs();
         }}
 
         function renderModalNotes(notesText) {{
@@ -4942,7 +5448,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 return res.json();
             }})
             .then(data => {{
-                globalCollections = data.collections || [];
+                setGlobalCollections(data.collections);
                 
                 // Remove from local active currentCollections if selected
                 currentCollections = currentCollections.filter(c => c.toLowerCase() !== name.toLowerCase());
@@ -4973,8 +5479,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }});
                 
                 // Re-render UI
-                renderModalCollectionsPopupList(document.getElementById("modal-popup-collections-search").value);
-                renderModalCollectionChips();
+                initializeModalCollectionInputs();
                 updateCollectionFilterOptions();
                 updateFilter();
             }})
@@ -5040,6 +5545,19 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 currentModalCard.dataset.collections = JSON.stringify(currentCollections);
                 currentModalCard.dataset.rating = currentRating;
                 
+                if (data.new_relative_path) {{
+                    currentModalCard.dataset.path = data.new_relative_path;
+                    
+                    // Update versions relative_path in-memory too
+                    const versions = JSON.parse(currentModalCard.dataset.versions || "[]");
+                    versions.forEach(v => {{
+                        if (v.file_stem === selectVal) {{
+                            v.relative_path = data.new_relative_path;
+                        }}
+                    }});
+                    currentModalCard.dataset.versions = JSON.stringify(versions);
+                }}
+                
                 // Redraw indicators on the card
                 updateCardIndicators(currentModalCard, notesVal, currentPersonalTriggers, currentRating, currentCollections);
                 
@@ -5101,113 +5619,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         // Render collections in the searchable popup list
         // Render collections in the searchable modal popup checklist
-        function renderModalCollectionsPopupList(filterText = "") {{
-            const listContainer = document.getElementById("modal-popup-collections-list");
-            if (!listContainer) return;
-            listContainer.innerHTML = "";
-            
-            const lowerFilter = filterText.trim().toLowerCase();
-            const counts = getCollectionCounts();
-            
-            // 1. Get filtered list of Recently Used collections
-            const filteredRecents = recentCollections.filter(c => 
-                c.toLowerCase().includes(lowerFilter) && globalCollections.includes(c)
-            );
-            
-            // 2. Get filtered list of All Collections (globalCollections sorted alphabetically)
-            const sortedAll = [...globalCollections].sort((a, b) => a.localeCompare(b));
-            const filteredAll = sortedAll.filter(c => 
-                c.toLowerCase().includes(lowerFilter)
-            );
-            
-            let html = "";
-            let itemIndex = 0;
-            
-            // Render Recently Used section if any exist
-            if (filteredRecents.length > 0) {{
-                html += `<div class="popup-section-header">⭐ Recently Used</div>`;
-                filteredRecents.forEach(name => {{
-                    const isActive = currentCollections.includes(name);
-                    const check = isActive ? "✓" : "";
-                    const activeClass = isActive ? "active" : "";
-                    const count = counts[name] || 0;
-                    html += `
-                        <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <div style="display: flex; align-items: center; min-width: 0; flex: 1;">
-                                <span class="popup-item-check">${{check}}</span>
-                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}} (${{count}})</span>
-                            </div>
-                            <button class="btn-delete-collection-popup" type="button" aria-label="Delete collection globally" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
-                        </div>
-                    `;
-                }});
-            }}
-            
-            // Render All Collections section
-            if (filteredAll.length > 0) {{
-                if (filteredRecents.length > 0) {{
-                    html += `<div class="popup-divider"></div>`;
-                }}
-                html += `<div class="popup-section-header">📚 All Collections</div>`;
-                filteredAll.forEach(name => {{
-                    const isActive = currentCollections.includes(name);
-                    const check = isActive ? "✓" : "";
-                    const activeClass = isActive ? "active" : "";
-                    const count = counts[name] || 0;
-                    html += `
-                        <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                            <div style="display: flex; align-items: center; min-width: 0; flex: 1;">
-                                <span class="popup-item-check">${{check}}</span>
-                                <span class="popup-item-name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${{escapeHTML(name)}} (${{count}})</span>
-                            </div>
-                            <button class="btn-delete-collection-popup" type="button" aria-label="Delete collection globally" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; z-index: 10;">&times;</button>
-                        </div>
-                    `;
-                }});
-            }}
-            
-            // If no match and filterText is not empty, show "Create <name>"
-            const cleanQuery = filterText.trim();
-            if (cleanQuery && !globalCollections.some(c => c.toLowerCase() === cleanQuery.toLowerCase())) {{
-                if (html) {{
-                    html += `<div class="popup-divider"></div>`;
-                }}
-                html += `
-                    <div class="popup-item create-item" data-create-name="${{escapeHTML(cleanQuery)}}" data-index="${{itemIndex++}}">
-                        <span class="popup-item-check">+</span>
-                        <span class="popup-item-name">Create "${{escapeHTML(cleanQuery)}}"</span>
-                    </div>
-                `;
-            }}
-            
-            if (!html) {{
-                html = `<div class="popup-item text-muted" style="justify-content: center; font-size: 12px;">No collections found</div>`;
-            }}
-            
-            listContainer.innerHTML = html;
-            
-            // Attach event listeners to popup items
-            const items = listContainer.querySelectorAll(".popup-item");
-            items.forEach(item => {{
-                item.addEventListener("click", () => {{
-                    handlePopupItemClick(item);
-                }});
-                
-                const delBtn = item.querySelector(".btn-delete-collection-popup");
-                if (delBtn) {{
-                    delBtn.addEventListener("click", (e) => {{
-                        e.stopPropagation();
-                        const name = item.dataset.name;
-                        if (name) {{
-                            deleteCollectionGlobally(name);
-                        }}
-                    }});
-                }}
-            }});
-            
-            // Restore focused item visual state
-            updateModalPopupFocus();
-        }}
+
 
         function getCollectionCounts() {{
             const counts = {{}};
@@ -5243,7 +5655,14 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }});
                 
                 cardColls.forEach(c => {{
-                    counts[c] = (counts[c] || 0) + 1;
+                    if (c && typeof c === 'string') {{
+                        const parts = c.split(/\s*[\/\\\\]\s*/);
+                        let path = "";
+                        for (let i = 0; i < parts.length; i++) {{
+                            path = path ? path + " / " + parts[i] : parts[i];
+                            counts[path] = (counts[path] || 0) + 1;
+                        }}
+                    }}
                 }});
             }});
             
@@ -5284,27 +5703,118 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }}
             }});
             
-            // Render matching other collections (sorted alphabetically)
-            const sortedCollections = [...globalCollections].sort((a, b) => a.localeCompare(b));
-            const filteredCollections = sortedCollections.filter(c => 
-                c.toLowerCase().includes(lowerFilter)
-            );
+            // Group collections by parent
+            const groups = {{}};
+            const parentNames = new Set();
             
-            if (filteredCollections.length > 0) {{
+            globalCollections.forEach(c => {{
+                if (c && typeof c === 'string') {{
+                    const parts = c.split(/\s*[\/\\\\]\s*/);
+                    if (parts[0]) parentNames.add(parts[0]);
+                }}
+            }});
+            
+            parentNames.forEach(p => {{
+                groups[p.toLowerCase()] = {{
+                    parentName: p,
+                    parentFullName: p,
+                    count: counts[p] || 0,
+                    children: []
+                }};
+            }});
+            
+            globalCollections.forEach(c => {{
+                if (c && typeof c === 'string') {{
+                    const parts = c.split(/\s*[\/\\\\]\s*/);
+                    const parentKey = parts[0].toLowerCase();
+                    if (parts.length > 1) {{
+                        const subName = parts.slice(1).join(" / ");
+                        groups[parentKey].children.push({{
+                            fullName: c,
+                            subName: subName,
+                            count: counts[c] || 0
+                        }});
+                    }} else {{
+                        groups[parentKey].parentFullName = c;
+                    }}
+                }}
+            }});
+            
+            const sortedKeys = Object.keys(groups).sort((a, b) => groups[a].parentName.localeCompare(groups[b].parentName));
+            const matchingGroups = [];
+            
+            sortedKeys.forEach(key => {{
+                const group = groups[key];
+                const parentMatches = group.parentName.toLowerCase().includes(lowerFilter);
+                const matchingChildren = group.children.filter(ch =>
+                    ch.subName.toLowerCase().includes(lowerFilter) || ch.fullName.toLowerCase().includes(lowerFilter)
+                );
+                
+                if (parentMatches || matchingChildren.length > 0) {{
+                    matchingGroups.push({{
+                        ...group,
+                        displayedChildren: lowerFilter ? matchingChildren : group.children
+                    }});
+                }}
+            }});
+            
+            if (matchingGroups.length > 0) {{
                 if (html) {{
                     html += `<div class="popup-divider"></div>`;
                 }}
                 html += `<div class="popup-section-header">📁 Collections</div>`;
-                filteredCollections.forEach(name => {{
-                    const isActive = activeCollection === name;
+                
+                matchingGroups.forEach(group => {{
+                    const parentName = group.parentName;
+                    const children = group.displayedChildren;
+                    children.sort((a, b) => a.subName.localeCompare(b.subName));
+                    
+                    const parentTag = group.parentFullName || parentName;
+                    const isActive = activeCollection === parentTag;
                     const activeClass = isActive ? "active" : "";
-                    const count = counts[name] || 0;
-                    html += `
-                        <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(name)}}" data-index="${{itemIndex++}}">
-                            <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
-                            <span class="popup-item-name">${{escapeHTML(name)}} (${{count}})</span>
-                        </div>
-                    `;
+                    const hasChildren = children.length > 0;
+                    
+                    const isChildActive = children.some(ch => activeCollection === ch.fullName);
+                    const isExpanded = !!lowerFilter || isChildActive || expandedParents.has(parentName.toLowerCase());
+                    
+                    if (hasChildren) {{
+                        const isAllActive = activeCollection === parentTag;
+                        const allActiveClass = isAllActive ? "active" : "";
+                        html += `
+                            <div class="popup-item parent-item" data-parent-key="${{escapeHTML(parentName.toLowerCase())}}" data-index="${{itemIndex++}}" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+                                <div style="display: flex; align-items: center; flex: 1; overflow: hidden; height: 100%;">
+                                    <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
+                                    <span class="popup-item-name" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${{escapeHTML(parentName)}} (${{group.count}})</span>
+                                </div>
+                                <span class="parent-toggle-arrow" style="padding: 4px 8px; color: var(--text-muted); display: flex; align-items: center; justify-content: center; font-size: 9px; transition: transform 0.2s; transform: ${{isExpanded ? "rotate(90deg)" : "rotate(0deg)"}};">▶</span>
+                            </div>
+                            <div class="parent-child-container" id="child-container-${{escapeHTML(parentName.toLowerCase())}}" style="display: ${{isExpanded ? "block" : "none"}}; padding-left: 16px; border-left: 1px solid var(--border); margin-left: 18px; margin-top: 2px; margin-bottom: 2px;">
+                                <div class="popup-item ${{allActiveClass}}" data-name="${{escapeHTML(parentTag)}}" data-index="${{itemIndex++}}">
+                                    <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
+                                    <span class="popup-item-name">All ${{escapeHTML(parentName)}} (${{group.count}})</span>
+                                </div>
+                        `;
+                        
+                        children.forEach(ch => {{
+                            const isChActive = activeCollection === ch.fullName;
+                            const chActiveClass = isChActive ? "active" : "";
+                            html += `
+                                <div class="popup-item ${{chActiveClass}}" data-name="${{escapeHTML(ch.fullName)}}" data-index="${{itemIndex++}}">
+                                    <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
+                                    <span class="popup-item-name">${{escapeHTML(ch.subName)}} (${{ch.count}})</span>
+                                </div>
+                            `;
+                        }});
+                        
+                        html += `</div>`;
+                    }} else {{
+                        html += `
+                            <div class="popup-item ${{activeClass}}" data-name="${{escapeHTML(parentTag)}}" data-index="${{itemIndex++}}">
+                                <span class="popup-item-icon" style="margin-right: 8px;">📁</span>
+                                <span class="popup-item-name">${{escapeHTML(parentName)}} (${{group.count}})</span>
+                            </div>
+                        `;
+                    }}
                 }});
             }}
             
@@ -5317,87 +5827,32 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             // Attach event listeners to popup items
             const items = listContainer.querySelectorAll(".popup-item");
             items.forEach(item => {{
-                item.addEventListener("click", () => {{
-                    const name = item.dataset.name;
-                    if (name) {{
-                        selectCollection(name);
-                    }}
-                }});
-            }});
-            
-            // Restore focus visual state
-            updatePopupFocus();
-        }}
-
-        function handlePopupItemClick(item) {{
-            const createName = item.dataset.createName;
-            if (createName) {{
-                // Create new collection
-                const normalized = normalizeCollectionName(createName);
-                // Check case-insensitive exists
-                const existing = findExistingCollectionCaseInsensitive(normalized);
-                if (existing) {{
-                    if (!currentCollections.includes(existing)) {{
-                        currentCollections.push(existing);
-                        markCollectionAsRecent(existing);
-                    }}
-                    document.getElementById("modal-popup-collections-search").value = "";
-                    renderModalCollectionsPopupList("");
-                    renderModalCollectionChips();
+                if (item.classList.contains("parent-item")) {{
+                    item.addEventListener("click", () => {{
+                        const parentKey = item.dataset.parentKey;
+                        const container = document.getElementById("child-container-" + parentKey);
+                        const toggleArrow = item.querySelector(".parent-toggle-arrow");
+                        if (container && toggleArrow) {{
+                            const isCollapsed = container.style.display === "none";
+                            container.style.display = isCollapsed ? "block" : "none";
+                            toggleArrow.style.transform = isCollapsed ? "rotate(90deg)" : "rotate(0deg)";
+                            
+                            if (isCollapsed) {{
+                                expandedParents.add(parentKey);
+                            }} else {{
+                                expandedParents.delete(parentKey);
+                            }}
+                        }}
+                    }});
                 }} else {{
-                    // Call API to create collection
-                    fetch("/api/collections", {{
-                        method: "POST",
-                        headers: {{
-                            "Content-Type": "application/json"
-                        }},
-                        body: JSON.stringify({{ name: normalized }})
-                    }})
-                    .then(res => {{
-                        if (!res.ok) throw new Error("Failed to save collection globally");
-                        return res.json();
-                    }})
-                    .then(data => {{
-                        globalCollections = data.collections || [];
-                        const serverCased = findExistingCollectionCaseInsensitive(normalized) || normalized;
-                        if (!currentCollections.includes(serverCased)) {{
-                            currentCollections.push(serverCased);
-                            markCollectionAsRecent(serverCased);
-                        }}
-                        document.getElementById("modal-popup-collections-search").value = "";
-                        renderModalCollectionsPopupList("");
-                        renderModalCollectionChips();
-                    }})
-                    .catch(err => {{
-                        console.error("Error creating collection:", err);
-                        // Fallback
-                        if (!globalCollections.includes(normalized)) {{
-                            globalCollections.push(normalized);
-                        }}
-                        if (!currentCollections.includes(normalized)) {{
-                            currentCollections.push(normalized);
-                            markCollectionAsRecent(normalized);
-                        }}
-                        document.getElementById("modal-popup-collections-search").value = "";
-                        renderModalCollectionsPopupList("");
-                        renderModalCollectionChips();
+                    item.addEventListener("click", () => {{
+                        const name = item.dataset.name;
+                        if (name) selectCollection(name);
                     }});
                 }}
-                return;
-            }}
+            }});
             
-            const name = item.dataset.name;
-            if (name) {{
-                const idx = currentCollections.indexOf(name);
-                if (idx > -1) {{
-                    currentCollections.splice(idx, 1);
-                }} else {{
-                    currentCollections.push(name);
-                    markCollectionAsRecent(name);
-                }}
-                renderModalCollectionsPopupList(document.getElementById("modal-popup-collections-search").value);
-                renderModalCollectionChips();
-            }}
+            updatePopupFocus();
         }}
 
         // Update the collection chip appearance dynamically based on the active selection
@@ -5470,12 +5925,168 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             updateCollectionChip();
         }}
 
+        function filterByCreator(e, name) {{
+            if (e) e.stopPropagation();
+            activeCreator = name;
+            updateCreatorChip();
+            updateFilter();
+        }}
+        
+        function updateCreatorChip() {{
+            const chip = document.getElementById("creator-chip");
+            const textSpan = document.getElementById("creator-chip-text");
+            if (!chip || !textSpan) return;
+            
+            if (activeCreator) {{
+                textSpan.textContent = activeCreator;
+                chip.style.display = "inline-flex";
+            }} else {{
+                chip.style.display = "none";
+            }}
+        }}
+        
+        const creatorClear = document.getElementById("creator-chip-clear");
+        if (creatorClear) {{
+            creatorClear.addEventListener("click", (e) => {{
+                e.stopPropagation();
+                activeCreator = "";
+                updateCreatorChip();
+                updateFilter();
+            }});
+        }}
+
+        // Manage Collections Modal Logic
+        const manageModal = document.getElementById("manage-collections-modal");
+        const btnManage = document.getElementById("btn-manage-collections");
+        const manageClose = document.getElementById("manage-modal-close");
+        const manageBtnClose = document.getElementById("manage-modal-btn-close");
+        
+        if (btnManage && manageModal) {{
+            btnManage.addEventListener("click", (e) => {{
+                e.stopPropagation();
+                // Close collections list popup
+                const collectionsPopup = document.getElementById("collections-popup");
+                if (collectionsPopup) collectionsPopup.hidden = true;
+                
+                // Show modal
+                manageModal.classList.add("active");
+                manageModal.setAttribute("aria-hidden", "false");
+                populateManageCollections();
+            }});
+        }}
+        
+        function closeManageModal() {{
+            if (manageModal) {{
+                manageModal.classList.remove("active");
+                manageModal.setAttribute("aria-hidden", "true");
+            }}
+        }}
+        
+        if (manageClose) manageClose.addEventListener("click", closeManageModal);
+        if (manageBtnClose) manageBtnClose.addEventListener("click", closeManageModal);
+        
+        function populateManageCollections() {{
+            const listContainer = document.getElementById("manage-collections-list");
+            if (!listContainer) return;
+            
+            listContainer.innerHTML = "";
+            
+            // Sort collections alphabetically
+            const sortedColls = [...globalCollections].sort((a, b) => a.localeCompare(b));
+            
+            if (sortedColls.length === 0) {{
+                listContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 13px; text-align: center; padding: 24px;">No collections found. Create collections by tagging LoRAs in the details modal.</div>';
+                return;
+            }}
+            
+            sortedColls.forEach(col => {{
+                const itemDiv = document.createElement("div");
+                itemDiv.style.display = "flex";
+                itemDiv.style.justifyContent = "space-between";
+                itemDiv.style.alignItems = "center";
+                itemDiv.style.padding = "8px 12px";
+                itemDiv.style.background = "rgba(255, 255, 255, 0.02)";
+                itemDiv.style.border = "1px solid var(--border)";
+                itemDiv.style.borderRadius = "6px";
+                
+                const nameSpan = document.createElement("span");
+                nameSpan.textContent = col;
+                nameSpan.style.fontSize = "13px";
+                nameSpan.style.color = "var(--text)";
+                nameSpan.style.fontWeight = "500";
+                
+                const renameBtn = document.createElement("button");
+                renameBtn.textContent = "✏️ Rename";
+                renameBtn.style.background = "rgba(129, 140, 248, 0.1)";
+                renameBtn.style.border = "1px solid rgba(129, 140, 248, 0.2)";
+                renameBtn.style.color = "#a5b4fc";
+                renameBtn.style.padding = "4px 8px";
+                renameBtn.style.borderRadius = "4px";
+                renameBtn.style.fontSize = "11px";
+                renameBtn.style.fontWeight = "600";
+                renameBtn.style.cursor = "pointer";
+                renameBtn.style.transition = "var(--transition)";
+                
+                renameBtn.addEventListener("mouseover", () => {{
+                    renameBtn.style.background = "rgba(129, 140, 248, 0.2)";
+                }});
+                renameBtn.addEventListener("mouseout", () => {{
+                    renameBtn.style.background = "rgba(129, 140, 248, 0.1)";
+                }});
+                
+                renameBtn.addEventListener("click", () => {{
+                    const newVal = prompt(`Rename collection "${{col}}" to:`, col);
+                    if (newVal !== null) {{
+                        const trimmed = newVal.trim();
+                        if (trimmed && trimmed.toLowerCase() !== col.toLowerCase()) {{
+                            // Call rename API
+                            renameBtn.disabled = true;
+                            renameBtn.textContent = "Saving...";
+                            
+                            fetch("/api/rename_collection", {{
+                                method: "POST",
+                                headers: {{
+                                    "Content-Type": "application/json"
+                                }},
+                                body: JSON.stringify({{
+                                    old_name: col,
+                                    new_name: trimmed
+                                }})
+                            }})
+                            .then(res => res.json())
+                            .then(data => {{
+                                if (data.ok) {{
+                                    alert(`Successfully renamed collection to "${{trimmed}}" across all files.`);
+                                    window.location.reload();
+                                }} else {{
+                                    alert(`Error: ${{data.message || "Failed to rename collection"}}`);
+                                    renameBtn.disabled = false;
+                                    renameBtn.textContent = "✏️ Rename";
+                                }}
+                            }})
+                            .catch(err => {{
+                                alert(`Network Error: ${{err.message}}`);
+                                renameBtn.disabled = false;
+                                renameBtn.textContent = "✏️ Rename";
+                            }});
+                        }}
+                    }}
+                }});
+                
+                itemDiv.appendChild(nameSpan);
+                itemDiv.appendChild(renameBtn);
+                listContainer.appendChild(itemDiv);
+            }});
+        }}
+
+
+
         let focusedItemIndex = -1;
 
         function getVisiblePopupItems() {{
             const listContainer = document.getElementById("popup-collections-list");
             if (!listContainer) return [];
-            return Array.from(listContainer.querySelectorAll(".popup-item:not(.text-muted)"));
+            return Array.from(listContainer.querySelectorAll(".popup-item:not(.text-muted)")).filter(el => el.offsetWidth > 0 || el.offsetHeight > 0);
         }}
 
         function updatePopupFocus() {{
@@ -5538,68 +6149,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }}
         }}
 
-        // Modal collections popup helpers
-        let modalFocusedItemIndex = -1;
-
-        function getVisibleModalPopupItems() {{
-            const listContainer = document.getElementById("modal-popup-collections-list");
-            if (!listContainer) return [];
-            return Array.from(listContainer.querySelectorAll(".popup-item:not(.text-muted)"));
-        }}
-
-        function updateModalPopupFocus() {{
-            const items = getVisibleModalPopupItems();
-            items.forEach((item, index) => {{
-                if (index === modalFocusedItemIndex) {{
-                    item.classList.add("focused");
-                    item.scrollIntoView({{ block: "nearest" }});
-                }} else {{
-                    item.classList.remove("focused");
-                }}
-            }});
-        }}
-
-        function toggleModalCollectionsPopup() {{
-            const popup = document.getElementById("modal-collections-popup");
-            if (!popup) return;
-            if (popup.hidden) {{
-                openModalCollectionsPopup();
-            }} else {{
-                closeModalCollectionsPopup();
-            }}
-        }}
-
-        function openModalCollectionsPopup() {{
-            const popup = document.getElementById("modal-collections-popup");
-            const searchInput = document.getElementById("modal-popup-collections-search");
-            if (!popup) return;
-            popup.hidden = false;
-            modalFocusedItemIndex = -1;
-            if (searchInput) {{
-                searchInput.value = "";
-                renderModalCollectionsPopupList("");
-                searchInput.focus();
-            }}
-            document.addEventListener("click", handleModalPopupOutsideClick);
-        }}
-
-        function closeModalCollectionsPopup() {{
-            const popup = document.getElementById("modal-collections-popup");
-            if (!popup || popup.hidden) return;
-            popup.hidden = true;
-            document.removeEventListener("click", handleModalPopupOutsideClick);
-            
-            // Save collections selection on close
-            autoSaveUserData();
-        }}
-
-        function handleModalPopupOutsideClick(event) {{
-            const popup = document.getElementById("modal-collections-popup");
-            const btn = document.getElementById("btn-show-add-collection-popup");
-            if (popup && !popup.hidden && !popup.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {{
-                closeModalCollectionsPopup();
-            }}
-        }}
 
         // Populate base model dropdown select dynamically from the unique base models of cards in the gallery
         function updateBaseModelFilterOptions() {{
@@ -5692,8 +6241,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             const preview = e.target.closest(".preview");
             if (!preview) return;
             
-            // Ignore click if they click an interactive element inside preview (like the favorite button)
-            if (e.target.closest("button") || e.target.closest("a")) {{
+            // Ignore click if they click an interactive element inside preview (like the favorite button or creator badge)
+            if (e.target.closest("button") || e.target.closest("a") || e.target.closest(".creator-badge")) {{
                 return;
             }}
             
@@ -5821,10 +6370,19 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     if (focusedItemIndex >= 0 && focusedItemIndex < items.length) {{
                         const selectedItem = items[focusedItemIndex];
                         if (selectedItem) {{
-                            selectCollection(selectedItem.dataset.name);
+                            if (selectedItem.classList.contains("parent-item")) {{
+                                selectedItem.click();
+                            }} else {{
+                                selectCollection(selectedItem.dataset.name);
+                            }}
                         }}
                     }} else if (items.length > 0) {{
-                        selectCollection(items[0].dataset.name);
+                        const firstItem = items[0];
+                        if (firstItem.classList.contains("parent-item")) {{
+                            firstItem.click();
+                        }} else {{
+                            selectCollection(firstItem.dataset.name);
+                        }}
                     }}
                 }} else if (e.key === "Escape") {{
                     e.preventDefault();
@@ -5838,67 +6396,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }});
         }}
 
-        // Keyboard navigation and fuzzy searching inside modal collections popup
-        const modalPopupSearchInput = document.getElementById("modal-popup-collections-search");
-        if (modalPopupSearchInput) {{
-            modalPopupSearchInput.addEventListener("keydown", (e) => {{
-                const items = getVisibleModalPopupItems();
-                if (items.length === 0) return;
 
-                if (e.key === "ArrowDown") {{
-                    e.preventDefault();
-                    modalFocusedItemIndex = (modalFocusedItemIndex + 1) % items.length;
-                    updateModalPopupFocus();
-                }} else if (e.key === "ArrowUp") {{
-                    e.preventDefault();
-                    modalFocusedItemIndex = (modalFocusedItemIndex - 1 + items.length) % items.length;
-                    updateModalPopupFocus();
-                }} else if (e.key === "Enter") {{
-                    e.preventDefault();
-                    if (modalFocusedItemIndex >= 0 && modalFocusedItemIndex < items.length) {{
-                        const selectedItem = items[modalFocusedItemIndex];
-                        if (selectedItem) {{
-                            handlePopupItemClick(selectedItem);
-                        }}
-                    }} else if (items.length > 0) {{
-                        handlePopupItemClick(items[0]);
-                    }}
-                }} else if (e.key === "Escape") {{
-                    e.preventDefault();
-                    closeModalCollectionsPopup();
-                }}
-            }});
-
-            modalPopupSearchInput.addEventListener("input", (e) => {{
-                modalFocusedItemIndex = -1;
-                renderModalCollectionsPopupList(e.target.value);
-            }});
-        }}
-
-        // Add collection popup show click listener
-        const showAddCollBtn = document.getElementById("btn-show-add-collection-popup");
-        if (showAddCollBtn) {{
-            showAddCollBtn.addEventListener("click", (e) => {{
-                e.stopPropagation();
-                toggleModalCollectionsPopup();
-            }});
-        }}
-
-        const modalCollPlaceholder = document.getElementById("modal-collections-placeholder");
-        if (modalCollPlaceholder) {{
-            modalCollPlaceholder.addEventListener("click", (e) => {{
-                e.stopPropagation();
-                toggleModalCollectionsPopup();
-            }});
-            modalCollPlaceholder.style.cursor = "pointer";
-        }}
-
-        const modalCollectionsDoneBtn = document.getElementById("modal-collections-done-btn");
-        if (modalCollectionsDoneBtn) {{
-            modalCollectionsDoneBtn.addEventListener("click", () => {{
-                closeModalCollectionsPopup();
-            }});
-        }}
 
         // Version Selector change listener
         const modalVersionSelect = document.getElementById("modal-version-select");
@@ -6011,7 +6509,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                             currentRating = userData.rating || 0;
                             const notes = userData.notes || "";
                             renderRating(currentRating);
-                            renderModalCollectionChips();
+                            initializeModalCollectionInputs();
                             renderModalNotes(notes);
                             renderPersonalTriggers();
                             adjustModalLayout();
@@ -6023,7 +6521,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                             currentCollections = [];
                             currentRating = 0;
                             renderRating(0);
-                            renderModalCollectionChips();
+                            initializeModalCollectionInputs();
                             renderModalNotes("");
                             renderPersonalTriggers();
                             adjustModalLayout();
@@ -6091,6 +6589,206 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 autoSaveUserData();
             }});
         }}
+
+        // Category and Sub-category inputs listeners
+        const parentInput = document.getElementById("modal-input-parent-collection");
+        const subInput = document.getElementById("modal-input-sub-collection");
+        const parentPopup = document.getElementById("modal-parent-collections-popup");
+        const subPopup = document.getElementById("modal-sub-collections-popup");
+        
+        if (parentInput && parentPopup) {{
+            const focusParentSearch = () => {{
+                const searchInput = document.getElementById("modal-parent-collections-search");
+                if (searchInput) {{
+                    searchInput.value = "";
+                    updateModalCollectionInputs();
+                    setTimeout(() => {{
+                        searchInput.focus();
+                    }}, 20);
+                }}
+            }};
+
+            parentInput.addEventListener("input", () => {{
+                parentPopup.hidden = false;
+                updateModalCollectionInputs();
+            }});
+            parentInput.addEventListener("change", () => {{
+                updateModalCollectionInputs();
+                saveModalCollectionsFromInputs();
+            }});
+            
+            // Show popup and focus search
+            parentInput.addEventListener("focus", () => {{
+                parentPopup.hidden = false;
+                if (subPopup) subPopup.hidden = true;
+                focusParentSearch();
+            }});
+            parentInput.addEventListener("click", (e) => {{
+                e.stopPropagation();
+                parentPopup.hidden = false;
+                if (subPopup) subPopup.hidden = true;
+                focusParentSearch();
+            }});
+            
+            const parentDoneBtn = parentPopup.querySelector(".popup-footer button");
+            if (parentDoneBtn) {{
+                parentDoneBtn.addEventListener("mousedown", (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    parentPopup.hidden = true;
+                }});
+            }}
+        }}
+        
+        if (subInput && subPopup) {{
+            const focusSubSearch = () => {{
+                const searchInput = document.getElementById("modal-sub-collections-search");
+                if (searchInput) {{
+                    searchInput.value = "";
+                    updateModalCollectionInputs();
+                    setTimeout(() => {{
+                        searchInput.focus();
+                    }}, 20);
+                }}
+            }};
+
+            subInput.addEventListener("input", () => {{
+                subPopup.hidden = false;
+                updateModalCollectionInputs();
+            }});
+            subInput.addEventListener("change", () => {{
+                updateModalCollectionInputs();
+                saveModalCollectionsFromInputs();
+            }});
+            
+            // Show popup and focus search
+            subInput.addEventListener("focus", () => {{
+                subPopup.hidden = false;
+                if (parentPopup) parentPopup.hidden = true;
+                focusSubSearch();
+            }});
+            subInput.addEventListener("click", (e) => {{
+                e.stopPropagation();
+                subPopup.hidden = false;
+                if (parentPopup) parentPopup.hidden = true;
+                focusSubSearch();
+            }});
+            
+            const subDoneBtn = subPopup.querySelector(".popup-footer button");
+            if (subDoneBtn) {{
+                subDoneBtn.addEventListener("mousedown", (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    subPopup.hidden = true;
+                }});
+            }}
+        }}
+
+        // Search inputs change & click listeners
+        const parentSearchInputEl = document.getElementById("modal-parent-collections-search");
+        if (parentSearchInputEl) {{
+            parentSearchInputEl.addEventListener("input", () => {{
+                updateModalCollectionInputs();
+            }});
+            parentSearchInputEl.addEventListener("click", (e) => {{
+                e.stopPropagation();
+            }});
+            parentSearchInputEl.addEventListener("mousedown", (e) => {{
+                e.stopPropagation();
+            }});
+        }}
+
+        const subSearchInputEl = document.getElementById("modal-sub-collections-search");
+        if (subSearchInputEl) {{
+            subSearchInputEl.addEventListener("input", () => {{
+                updateModalCollectionInputs();
+            }});
+            subSearchInputEl.addEventListener("click", (e) => {{
+                e.stopPropagation();
+            }});
+            subSearchInputEl.addEventListener("mousedown", (e) => {{
+                e.stopPropagation();
+            }});
+        }}
+        
+        // Setup keyboard navigation for custom popups
+        function bindPopupKeyboardNav(inputId, popupId, listId) {{
+            const input = document.getElementById(inputId);
+            const popup = document.getElementById(popupId);
+            const list = document.getElementById(listId);
+            if (!input || !popup || !list) return;
+            
+            let focusedIdx = -1;
+            
+            const getItems = () => Array.from(list.querySelectorAll(".popup-item:not(.text-muted)"));
+            
+            const updateFocus = (items) => {{
+                items.forEach((item, index) => {{
+                    if (index === focusedIdx) {{
+                        item.classList.add("focused");
+                        item.scrollIntoView({{ block: "nearest" }});
+                    }} else {{
+                        item.classList.remove("focused");
+                    }}
+                }});
+            }};
+            
+            input.addEventListener("keydown", (e) => {{
+                if (popup.hidden) {{
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {{
+                        e.preventDefault();
+                        popup.hidden = false;
+                        focusedIdx = -1;
+                        updateModalCollectionInputs();
+                    }}
+                    return;
+                }}
+                
+                const items = getItems();
+                if (items.length === 0) return;
+                
+                if (e.key === "ArrowDown") {{
+                    e.preventDefault();
+                    focusedIdx = (focusedIdx + 1) % items.length;
+                    updateFocus(items);
+                }} else if (e.key === "ArrowUp") {{
+                    e.preventDefault();
+                    focusedIdx = (focusedIdx - 1 + items.length) % items.length;
+                    updateFocus(items);
+                }} else if (e.key === "Enter") {{
+                    e.preventDefault();
+                    if (focusedIdx >= 0 && focusedIdx < items.length) {{
+                        items[focusedIdx].dispatchEvent(new MouseEvent("mousedown"));
+                    }} else if (items.length > 0) {{
+                        items[0].dispatchEvent(new MouseEvent("mousedown"));
+                    }}
+                    popup.hidden = true;
+                }} else if (e.key === "Escape") {{
+                    e.preventDefault();
+                    popup.hidden = true;
+                }}
+            }});
+        }}
+        
+        bindPopupKeyboardNav("modal-input-parent-collection", "modal-parent-collections-popup", "modal-parent-collections-list");
+        bindPopupKeyboardNav("modal-parent-collections-search", "modal-parent-collections-popup", "modal-parent-collections-list");
+        bindPopupKeyboardNav("modal-input-sub-collection", "modal-sub-collections-popup", "modal-sub-collections-list");
+        bindPopupKeyboardNav("modal-sub-collections-search", "modal-sub-collections-popup", "modal-sub-collections-list");
+        
+        // Document click listener to close popups
+        document.addEventListener("click", (e) => {{
+            const pPopup = document.getElementById("modal-parent-collections-popup");
+            const sPopup = document.getElementById("modal-sub-collections-popup");
+            const pWrapper = document.getElementById("modal-input-parent-collection")?.closest(".custom-dropdown-wrapper")?.parentNode;
+            const sWrapper = document.getElementById("modal-input-sub-collection")?.closest(".custom-dropdown-wrapper")?.parentNode;
+            
+            if (pPopup && !pPopup.hidden && pWrapper && !pWrapper.contains(e.target)) {{
+                pPopup.hidden = true;
+            }}
+            if (sPopup && !sPopup.hidden && sWrapper && !sWrapper.contains(e.target)) {{
+                sPopup.hidden = true;
+            }}
+        }});
 
         // Open parent folder handler
         const openFolderBtn = document.getElementById("modal-btn-open-folder");
@@ -6313,27 +7011,26 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             grid.addEventListener("mousemove", (e) => {{
                 mouseX = e.clientX;
                 mouseY = e.clientY;
-            }}, {{ passive: true }});
-            
-            grid.addEventListener("mouseover", (e) => {{
+                
                 const modal = document.getElementById("details-modal");
                 if (modal && modal.classList.contains("active")) return;
                 
                 const card = e.target.closest(".card");
-                if (!card) return;
-                
-                if (activeHoverCard === card) return;
-                
-                if (hoverTimeout) {{
-                    clearTimeout(hoverTimeout);
+                if (card) {{
+                    const hoverPreview = document.getElementById("hover-preview-card");
+                    const isVisible = hoverPreview && hoverPreview.classList.contains("visible");
+                    
+                    if (!isVisible) {{
+                        if (hoverTimeout) {{
+                            clearTimeout(hoverTimeout);
+                        }}
+                        activeHoverCard = card;
+                        hoverTimeout = setTimeout(() => {{
+                            showHoverPreview(card);
+                        }}, 400); // 400ms preview delay (triggered only when mouse stops moving)
+                    }}
                 }}
-                
-                activeHoverCard = card;
-                
-                hoverTimeout = setTimeout(() => {{
-                    showHoverPreview(card);
-                }}, 600); // 600ms preview delay
-            }});
+            }}, {{ passive: true }});
             
             grid.addEventListener("mouseout", (e) => {{
                 const card = e.target.closest(".card");

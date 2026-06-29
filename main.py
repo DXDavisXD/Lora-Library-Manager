@@ -79,18 +79,28 @@ def cleanup_stale_tmp_files(lora_root: Path) -> None:
 
 # Print the main menu options.
 def print_menu() -> None:
-    print("1. Automatic")
-    print("2. Manual Operations Submenu")
-    print("3. Start Gallery Server")
-    print("4. Export Library Manifest")
-    print("5. Import Library Manifest")
-    print("6. Exit")
     dry_status = "ON" if is_dry_run() else "OFF"
     verbose_status = "ON" if is_verbose() else "OFF"
-    print(f"7. Toggle Dry Run Mode (Currently {dry_status})")
-    print(f"8. Toggle Verbose Mode (Currently {verbose_status})")
-    print("9. Set CivitAI API Key")
-    print("10. Quick Refresh")
+    
+    print("--- CORE ACTIONS ---")
+    print("  1. Run Automatic Sync (Organize + Asset Download + Rebuild Gallery)")
+    print("  2. Start Gallery Web Server")
+    print("  3. Run Quick Refresh (Scan files & regenerate gallery)")
+    print("  4. Open Migration Wizard")
+    print()
+    print("--- ADVANCED OPERATIONS ---")
+    print("  5. Open Manual Operations Submenu")
+    print("  6. Export Library Manifest")
+    print("  7. Import Library Manifest")
+    print("  8. Open Diagnostics & Cleanup Submenu")
+    print()
+    print("--- CONFIGURATION & SETTINGS ---")
+    print(f"  9. Toggle Dry Run Mode    [Currently: {dry_status}]")
+    print(f"  10. Toggle Verbose Mode   [Currently: {verbose_status}]")
+    print("  11. Set CivitAI API Key")
+    print()
+    print("--- SYSTEM ---")
+    print("  0. Exit")
     print()
 
 
@@ -436,6 +446,31 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
     if choice == "1":
         print_summary("Automatic summary", run_automatic(lora_root))
     elif choice == "2":
+        start_server(lora_root)
+    elif choice == "3":
+        print_summary("Quick Refresh", run_quick_refresh(lora_root))
+    elif choice == "4":
+        while True:
+            print("\n--- Migration Wizard ---")
+            print("1. Preview Library Organization (Read-Only)")
+            print("2. Import Existing Library (Convert Folders to Collections)")
+            print("3. Go Back to Main Menu")
+            print()
+            sub_choice = input("Choose an option: ").strip()
+            
+            if sub_choice == "1":
+                from migration import scan_library_hierarchy, generate_migration_preview
+                print("Scanning library for migration preview...")
+                data = scan_library_hierarchy(lora_root)
+                generate_migration_preview(data)
+            elif sub_choice == "2":
+                from migration import import_existing_library
+                import_existing_library(lora_root)
+            elif sub_choice == "3":
+                break
+            else:
+                print("Please choose a number from 1 to 3.")
+    elif choice == "5":
         while True:
             print("\n--- Manual Operations Submenu ---")
             print("1. Process Single File")
@@ -443,7 +478,8 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
             print("3. Download Previews Only")
             print("4. Download Metadata Only")
             print("5. Generate Gallery Only")
-            print("6. Go Back to Main Menu")
+            print("6. Generate Missing SHA256 Hashes")
+            print("7. Go Back to Main Menu")
             print()
             sub_choice = input("Choose a manual option: ").strip()
             
@@ -461,50 +497,110 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
                 summary = refresh_gallery(lora_root)
                 print_summary("Gallery generation summary", summary)
             elif sub_choice == "6":
+                from migration import generate_missing_sha256_hashes
+                generate_missing_sha256_hashes(lora_root)
+            elif sub_choice == "7":
                 break
             else:
-                print("Please choose a number from 1 to 6.")
-    elif choice == "3":
-        start_server(lora_root)
-    elif choice == "4":
-        manifest_filename = input("Enter output manifest filename (default: library_manifest.json): ").strip()
+                print("Please choose a number from 1 to 7.")
+    elif choice == "6":
+        from datetime import datetime
+        default_name = f"backup/{datetime.now().strftime('%d.%m.%Y-%H.%M')}.json"
+        manifest_filename = input(f"Enter output manifest filename (default: {default_name}): ").strip()
         if not manifest_filename:
-            manifest_filename = "library_manifest.json"
+            manifest_filename = default_name
         manifest_path = Path(manifest_filename)
         if not manifest_path.is_absolute():
             manifest_path = lora_root / manifest_path
         from manifest import export_library_manifest
         export_library_manifest(lora_root, manifest_path)
-    elif choice == "5":
-        manifest_filename = input("Enter input manifest filename (default: library_manifest.json): ").strip()
-        if not manifest_filename:
-            manifest_filename = "library_manifest.json"
-        manifest_path = Path(manifest_filename)
+    elif choice == "7":
+        from datetime import datetime
+        backup_dir = lora_root / "backup"
+        backups = []
+        if backup_dir.exists() and backup_dir.is_dir():
+            backups = sorted(
+                [p for p in backup_dir.glob("*.json")],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True
+            )
+            
+        manifest_path = None
+        if backups:
+            print("\nAvailable backups found in backup/ folder:")
+            for idx, b in enumerate(backups, 1):
+                mtime_str = datetime.fromtimestamp(b.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                print(f"  {idx}. {b.name}  (Modified: {mtime_str})")
+            print("  c. Specify custom path/filename")
+            print()
+            sel = input("Choose a backup to import (default: 1): ").strip().lower()
+            if not sel or sel == "1":
+                manifest_path = backups[0]
+            elif sel == "c":
+                manifest_filename = input("Enter manifest path/filename: ").strip()
+                if manifest_filename:
+                    manifest_path = Path(manifest_filename)
+            elif sel.isdigit() and 1 <= int(sel) <= len(backups):
+                manifest_path = backups[int(sel) - 1]
+            else:
+                print("Invalid selection, cancelling.")
+                return True
+        else:
+            manifest_filename = input("Enter input manifest filename (default: library_manifest.json): ").strip()
+            if not manifest_filename:
+                manifest_filename = "library_manifest.json"
+            manifest_path = Path(manifest_filename)
+            
+        if not manifest_path:
+            print("No manifest path selected, cancelling.")
+            return True
+            
         if not manifest_path.is_absolute():
             manifest_path = lora_root / manifest_path
+            
         from manifest import import_library_manifest
         import_library_manifest(lora_root, manifest_path)
         
         # Automatically organize the imported files into their proper folders
         print("\nRunning library organizer to place imported models in their folders...")
         from organizer import organize_library
-        organize_library(lora_root, lora_root)
+        organize_library(lora_root, print_summary=False)
         
         # Automatically refresh the gallery to reflect changes
         print("\nRefreshing gallery...")
         refresh_gallery(lora_root)
-    elif choice == "6":
-        print("Goodbye.")
-        return False
-    elif choice == "7":
+    elif choice == "8":
+        while True:
+            print("\n--- Diagnostics & Cleanup Submenu ---")
+            print("1. Run CivitAI Update Detector")
+            print("2. Run Duplicate LoRA Finder & Cleanup")
+            print("3. Run Asset Audit & Bulk Downloader")
+            print("4. Go Back to Main Menu")
+            print()
+            diag_choice = input("Choose a diagnostics option: ").strip()
+            
+            if diag_choice == "1":
+                from diagnostics import run_update_detector
+                run_update_detector(lora_root)
+            elif diag_choice == "2":
+                from diagnostics import run_duplicate_finder
+                run_duplicate_finder(lora_root)
+            elif diag_choice == "3":
+                from diagnostics import run_asset_auditer_downloader
+                run_asset_auditer_downloader(lora_root)
+            elif diag_choice == "4":
+                break
+            else:
+                print("Please choose a number from 1 to 4.")
+    elif choice == "9":
         new_val = not is_dry_run()
         set_dry_run(new_val)
         print(f"Dry run mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "8":
+    elif choice == "10":
         new_val = not is_verbose()
         set_verbose(new_val)
         print(f"Verbose mode is now {'ENABLED' if new_val else 'DISABLED'}.")
-    elif choice == "9":
+    elif choice == "11":
         from config import get_civitai_api_key, set_civitai_api_key
         current_key = get_civitai_api_key()
         masked_key = f"{current_key[:4]}...{current_key[-4:]}" if len(current_key) > 8 else "Not Set"
@@ -517,10 +613,11 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
             else:
                 set_civitai_api_key(new_key)
                 print("API Key updated and saved.")
-    elif choice == "10":
-        print_summary("Quick Refresh", run_quick_refresh(lora_root))
+    elif choice == "0":
+        print("Goodbye.")
+        return False
     else:
-        print("Please choose a number from 1 to 10.")
+        print("Please choose a number from 0 to 11.")
 
     return True
 
