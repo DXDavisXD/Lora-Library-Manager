@@ -2,10 +2,12 @@
 
 The GUI is intentionally not implemented yet.
 """
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import json
 import time
-from pathlib import Path
 
 from civitai import get_model_for_safetensors
 from config import (
@@ -99,7 +101,7 @@ def print_menu() -> None:
     print("  8. 📥 Import Library Backup Manifest")
     print()
     print("─── ⚙️ SETTINGS & SYSTEM ───")
-    print(f"  9. 🚫 Toggle Dry Run Mode    [Currently: {dry_status}]")
+    print(f"  9.  🚫 Toggle Dry Run Mode    [Currently: {dry_status}]")
     print(f"  10. 🔊 Toggle Verbose Mode   [Currently: {verbose_status}]")
     print("  11. 🔑 Set CivitAI API Key")
     print()

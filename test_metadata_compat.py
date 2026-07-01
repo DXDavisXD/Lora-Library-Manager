@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import sys
 
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent / "src"))
 
 from downloader import save_metadata_if_missing, merge_metadata, import_metadata_to_user_data_dict, load_json_lenient
 from config import set_dry_run, is_complete_metadata

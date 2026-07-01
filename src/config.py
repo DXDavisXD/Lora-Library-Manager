@@ -10,7 +10,7 @@ VERSION = "2.2.0"
 LORA_ROOT = Path(r"Path to LoRA folder")  # Default LoRA root folder; can be overridden in settings.json
 LORA_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".bin"}
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-SETTINGS_FILE = Path(__file__).parent / "settings.json"
+SETTINGS_FILE = Path(__file__).parent.parent / "settings.json"
 TMP_CLEANUP_AGE_SECONDS = 3600
 
 

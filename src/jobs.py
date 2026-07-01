@@ -10,7 +10,7 @@ from config import log_operation
 
 # Thread-local storage to track the active job inside a worker thread
 _local_state = threading.local()
-SETTINGS_DIR = Path(__file__).parent
+SETTINGS_DIR = Path(__file__).parent.parent
 JOBS_FILE = SETTINGS_DIR / "jobs.json"
 log_callbacks = []
 
