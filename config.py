@@ -79,6 +79,55 @@ def set_civitai_api_key(value: str) -> None:
     save_settings(settings)
 
 
+# Update the LoRA root folder and persist to settings.json.
+def set_lora_root(value: str) -> None:
+    settings = load_settings()
+    settings["lora_root"] = value.strip()
+    save_settings(settings)
+
+
+# Get preferred download strategy. Defaults to "skip" (skip existing).
+def get_download_strategy() -> str:
+    _settings = load_settings()
+    return _settings.get("download_strategy", "skip")
+
+
+# Set preferred download strategy.
+def set_download_strategy(value: str) -> None:
+    settings = load_settings()
+    settings["download_strategy"] = value.strip()
+    save_settings(settings)
+
+
+# Get default prompt weight. Defaults to 1.0.
+def get_default_weight() -> float:
+    _settings = load_settings()
+    try:
+        return float(_settings.get("default_weight", 1.0))
+    except (ValueError, TypeError):
+        return 1.0
+
+
+# Set default prompt weight.
+def set_default_weight(value: float) -> None:
+    settings = load_settings()
+    settings["default_weight"] = float(value)
+    save_settings(settings)
+
+
+# Get default gallery sort. Defaults to "name".
+def get_default_sort() -> str:
+    _settings = load_settings()
+    return _settings.get("default_sort", "name")
+
+
+# Set default gallery sort.
+def set_default_sort(value: str) -> None:
+    settings = load_settings()
+    settings["default_sort"] = value.strip()
+    save_settings(settings)
+
+
 # Log a timestamped operation message to logs/YYYY-MM-DD.log under LORA_ROOT.
 def log_operation(message: str) -> None:
     if ENABLE_FILE_LOGGING:

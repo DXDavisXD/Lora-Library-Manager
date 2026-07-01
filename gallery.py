@@ -898,7 +898,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-shrink: 0;
         }}
 
-        h1 {{
+        h1 {
             margin: 0;
             font-size: 20px;
             font-weight: 800;
@@ -907,7 +907,30 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             -webkit-text-fill-color: transparent;
             letter-spacing: -0.025em;
             white-space: nowrap;
-        }}
+        }
+
+        .btn-manage-link {
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            color: #a5b4fc;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            gap: 6px;
+        }
+
+        .btn-manage-link:hover {
+            background: rgba(99, 102, 241, 0.25);
+            border-color: var(--accent);
+            color: #fff;
+        }
 
         .search-wrapper {{
             position: relative;
@@ -3176,6 +3199,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         <div class="header-container">
             <div class="header-left">
                 <h1>LoRA Library</h1>
+                <a href="/manage" class="btn-manage-link">
+                    <span>🎛️</span>
+                    <span>Manager</span>
+                </a>
                 <div class="divider"></div>
                 <div class="weight-control">
                     <span class="weight-label">Weight</span>

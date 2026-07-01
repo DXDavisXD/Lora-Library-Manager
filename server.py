@@ -30,6 +30,10 @@ _task_lock   = threading.Lock()
 _task_running = False           # True while a managed task is executing
 _task_log_queue: queue.Queue = queue.Queue()   # str lines or sentinel None
 
+_job_queue = None
+import jobs
+jobs.log_callbacks.append(lambda msg: _task_log_queue.put(msg))
+
 _USER_DATA_CACHE_TTL: float = 30.0   # seconds
 _user_data_cache: dict = {}           # {"data": {...}, "computed_at": float}
 
@@ -73,27 +77,44 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_get_stats()
         elif path == "/api/settings":
             self.handle_get_settings()
+        elif path == "/api/tasks":
+            self.handle_get_tasks()
+        elif path == "/api/task-history":
+            self.handle_get_task_history()
+        elif path == "/api/backups":
+            self.handle_get_backups()
         else:
             # Fall back to serving static files
             super().do_GET()
 
     def do_POST(self):
-        if self.path == "/api/save_user_data":
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+        query = urllib.parse.parse_qs(parsed_url.query)
+
+        if path == "/api/save_user_data":
             self.handle_save_user_data()
-        elif self.path == "/api/delete_model_version":
+        elif path == "/api/delete_model_version":
             self.handle_delete_model_version()
-        elif self.path == "/api/collections":
+        elif path == "/api/collections":
             self.handle_add_collection()
-        elif self.path == "/api/delete_collection":
+        elif path == "/api/delete_collection":
             self.handle_delete_collection()
-        elif self.path == "/api/rename_collection":
+        elif path == "/api/rename_collection":
             self.handle_rename_collection()
-        elif self.path == "/api/open_folder":
+        elif path == "/api/open_folder":
             self.handle_open_folder()
-        elif self.path.startswith("/api/run/"):
-            action = self.path[len("/api/run/"):]
-            self.handle_run_task(action)
-        elif self.path == "/api/settings":
+        elif path.startswith("/api/tasks/") and path.endswith("/cancel"):
+            parts = path.split("/")
+            if len(parts) >= 5:
+                job_id = parts[3]
+                self.handle_cancel_task(job_id)
+            else:
+                self.send_error_response(400, "Invalid request path")
+        elif path.startswith("/api/run/"):
+            action = path[len("/api/run/"):]
+            self.handle_run_task(action, query)
+        elif path == "/api/settings":
             self.handle_post_settings()
         else:
             self.send_error_response(404, "Not Found")
@@ -791,106 +812,154 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(500, f"Error computing stats: {e}")
 
     def handle_get_settings(self):
-        """Return current settings (api key masked, dry_run, verbose)."""
+        """Return current settings (api key, dry_run, verbose, lora_root, download_strategy, weight, sort)."""
         try:
-            from config import get_civitai_api_key, is_dry_run, is_verbose
-            key = get_civitai_api_key()
+            from config import (get_civitai_api_key, is_dry_run, is_verbose, get_lora_root,
+                                get_download_strategy, get_default_weight, get_default_sort)
             self.send_success_response({
-                "api_key": key,
+                "api_key": get_civitai_api_key(),
                 "dry_run": is_dry_run(),
                 "verbose": is_verbose(),
+                "lora_root": str(get_lora_root()),
+                "download_strategy": get_download_strategy(),
+                "default_weight": get_default_weight(),
+                "default_sort": get_default_sort(),
             })
         except Exception as e:
             self.send_error_response(500, f"Error reading settings: {e}")
 
     def handle_post_settings(self):
-        """Update settings from the dashboard form."""
+        """Update settings from the settings form."""
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
-            from config import set_civitai_api_key, set_dry_run, set_verbose
-            api_key = body.get("api_key", "").strip()
-            if api_key:
-                set_civitai_api_key(api_key)
-            set_dry_run(bool(body.get("dry_run", False)))
-            set_verbose(bool(body.get("verbose", True)))
+            from config import (set_civitai_api_key, set_dry_run, set_verbose, set_lora_root,
+                                set_download_strategy, set_default_weight, set_default_sort)
+            
+            if "api_key" in body:
+                set_civitai_api_key(body["api_key"])
+            if "dry_run" in body:
+                set_dry_run(bool(body["dry_run"]))
+            if "verbose" in body:
+                set_verbose(bool(body["verbose"]))
+            if "lora_root" in body:
+                set_lora_root(body["lora_root"])
+            if "download_strategy" in body:
+                set_download_strategy(body["download_strategy"])
+            if "default_weight" in body:
+                set_default_weight(body["default_weight"])
+            if "default_sort" in body:
+                set_default_sort(body["default_sort"])
+                
             self.send_success_response({"ok": True})
         except Exception as e:
             self.send_error_response(500, f"Error saving settings: {e}")
 
-    def handle_run_task(self, action: str):
-        """Start a background task. Returns immediately; logs are streamed via SSE."""
-        global _task_running, _task_log_queue
-        valid_actions = {
-            "sync", "quick-refresh", "organize",
-            "download-previews", "download-metadata", "rebuild-gallery",
-            "migrate-metadata",
-        }
-        if action not in valid_actions:
-            self.send_error_response(400, f"Unknown action: {action}")
+    def handle_get_tasks(self):
+        """Return running and queued tasks from the queue manager."""
+        global _job_queue
+        if not _job_queue:
+            self.send_success_response([])
+            return
+        self.send_success_response(_job_queue.get_active_tasks())
+
+    def handle_get_task_history(self):
+        """Return completed, failed, and interrupted tasks from the queue manager."""
+        global _job_queue
+        if not _job_queue:
+            self.send_success_response([])
+            return
+        self.send_success_response(_job_queue.get_task_history())
+
+    def handle_cancel_task(self, job_id: str):
+        """Request cancellation for a running or pending task."""
+        global _job_queue
+        if not _job_queue:
+            self.send_error_response(500, "Job queue not initialized")
+            return
+        success = _job_queue.cancel_job(job_id)
+        self.send_success_response({"ok": success})
+
+    def handle_get_backups(self):
+        """List backup manifest files stored in the backup/ directory."""
+        try:
+            backup_dir = self.lora_root / "backup"
+            backups = []
+            if backup_dir.exists() and backup_dir.is_dir():
+                backups = sorted(
+                    [b.name for b in backup_dir.glob("*.json")],
+                    key=lambda x: (backup_dir / x).stat().st_mtime,
+                    reverse=True
+                )
+            self.send_success_response(backups)
+        except Exception as e:
+            self.send_error_response(500, str(e))
+
+    def handle_run_task(self, action: str, query_params: dict):
+        """Enqueue a background task based on client run action."""
+        global _job_queue, _task_log_queue
+        if not _job_queue:
+            self.send_error_response(500, "Job queue not initialized")
             return
 
-        if not _task_lock.acquire(blocking=False):
-            self.send_error_response(409, "A task is already running. Please wait.")
-            return
+        import jobs
+        job = None
 
-        _task_running = True
-        # Drain the queue before starting fresh
-        while not _task_log_queue.empty():
-            try:
-                _task_log_queue.get_nowait()
-            except queue.Empty:
-                break
+        try:
+            # Drain the SSE log stream before enqueuing a fresh task
+            while not _task_log_queue.empty():
+                try:
+                    _task_log_queue.get_nowait()
+                except queue.Empty:
+                    break
 
-        lora_root = self.lora_root
+            if action == "sync":
+                job = jobs.SyncJob()
+            elif action == "quick-refresh":
+                job = jobs.QuickRefreshJob()
+            elif action == "organize":
+                job = jobs.OrganizeJob()
+            elif action == "download-previews":
+                job = jobs.DownloadPreviewsJob()
+            elif action == "download-metadata":
+                job = jobs.DownloadMetadataJob()
+            elif action == "rebuild-gallery":
+                job = jobs.RebuildGalleryJob()
+            elif action == "migrate-metadata":
+                job = jobs.MigrateMetadataJob()
+            elif action == "civitai-update-detector":
+                job = jobs.CivitaiUpdateDetectorJob()
+            elif action == "duplicate-finder":
+                strategy = query_params.get("strategy", ["scan-only"])[0]
+                job = jobs.DuplicateFinderJob(strategy=strategy)
+            elif action == "generate-hashes":
+                job = jobs.GenerateHashesJob()
+            elif action == "migration-preview":
+                job = jobs.MigrationPreviewJob()
+            elif action == "import-existing":
+                job = jobs.ImportExistingJob()
+            elif action == "export-manifest":
+                job = jobs.ExportManifestJob()
+            elif action == "import-manifest":
+                filename = query_params.get("manifest_path", [""])[0]
+                if not filename:
+                    self.send_error_response(400, "Missing manifest_path parameter")
+                    return
+                job = jobs.ImportManifestJob(manifest_filename=filename)
+            elif action == "process-single-file":
+                file_path = query_params.get("file_path", [""])[0]
+                if not file_path:
+                    self.send_error_response(400, "Missing file_path parameter")
+                    return
+                job = jobs.ProcessSingleFileJob(file_path=file_path)
+            else:
+                self.send_error_response(400, f"Unknown action: {action}")
+                return
 
-        def _worker():
-            global _task_running
-            import io, contextlib
-
-            class _QueueStream(io.TextIOBase):
-                """Redirect print() output into the SSE log queue."""
-                def write(self, s):
-                    for line in s.splitlines():
-                        if line.strip():
-                            _task_log_queue.put(line)
-                    return len(s)
-                def flush(self):
-                    pass
-
-            qs = _QueueStream()
-            try:
-                with contextlib.redirect_stdout(qs):
-                    if action == "sync":
-                        from main import run_automatic
-                        run_automatic(lora_root)
-                    elif action == "quick-refresh":
-                        from main import run_quick_refresh
-                        run_quick_refresh(lora_root)
-                    elif action == "organize":
-                        from main import run_organize
-                        run_organize(lora_root)
-                    elif action == "download-previews":
-                        from main import run_asset_job
-                        run_asset_job(lora_root, download_metadata=False, download_preview=True)
-                    elif action == "download-metadata":
-                        from main import run_asset_job
-                        run_asset_job(lora_root, download_metadata=True, download_preview=False)
-                    elif action == "rebuild-gallery":
-                        from main import refresh_gallery
-                        refresh_gallery(lora_root)
-                    elif action == "migrate-metadata":
-                        from diagnostics import migrate_metadata_to_user_data
-                        migrate_metadata_to_user_data(lora_root)
-            except Exception as ex:
-                _task_log_queue.put(f"ERROR: {ex}")
-            finally:
-                _task_log_queue.put(None)   # sentinel — signals __DONE__
-                _task_running = False
-                _task_lock.release()
-
-        threading.Thread(target=_worker, daemon=True).start()
-        self.send_success_response({"ok": True, "action": action})
+            _job_queue.enqueue(job)
+            self.send_success_response({"ok": True, "job_id": job.id})
+        except Exception as e:
+            self.send_error_response(500, str(e))
 
     def handle_log_stream(self):
         """SSE endpoint that streams lines from _task_log_queue to the browser."""
@@ -952,6 +1021,11 @@ def make_handler(lora_root: Path):
     return CustomHandler
 
 def start_server(lora_root: Path, port: int = 8000) -> None:
+    global _job_queue
+    from jobs import JobQueue
+    _job_queue = JobQueue(lora_root)
+    _job_queue.start_worker()
+
     handler = make_handler(lora_root)
     server = None
     actual_port = port
