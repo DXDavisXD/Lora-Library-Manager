@@ -373,11 +373,82 @@ def build_manage_page(lora_root: Path) -> str:
   }}
   .btn-mini:hover {{ background: var(--accent-hover); }}
 
+  /* Settings panel styles */
+  .settings-form {{ display: flex; flex-direction: column; gap: 14px; }}
+  .setting-row {{ display: flex; flex-direction: column; gap: 5px; }}
+  .setting-label {{ font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }}
+  .setting-input {{
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 8px 10px;
+    width: 100%;
+    outline: none;
+    transition: var(--transition);
+    font-family: inherit;
+  }}
+  .setting-input:focus {{ border-color: var(--accent); }}
+  .toggle-row {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }}
+  .toggle-row:last-child {{ border-bottom: none; }}
+  .toggle-name {{ font-size: 13px; font-weight: 600; color: var(--text); }}
+  .toggle-switch {{
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+  }}
+  .toggle-switch input {{ opacity: 0; width: 0; height: 0; }}
+  .toggle-track {{
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    transition: var(--transition);
+  }}
+  .toggle-track::after {{
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: var(--transition);
+  }}
+  .toggle-switch input:checked + .toggle-track {{ background: var(--accent); border-color: var(--accent); }}
+  .toggle-switch input:checked + .toggle-track::after {{ transform: translateX(20px); background: #fff; }}
+  .btn-save {{
+    padding: 9px 16px;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    align-self: flex-end;
+  }}
+  .btn-save:hover {{ background: var(--accent-hover); transform: translateY(-1px); }}
+
   /* ── Right Column Panels ── */
   .right-col {{
     display: flex;
     flex-direction: column;
     gap: 28px;
+    position: sticky;
+    top: 88px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    padding-right: 4px;
   }}
 
   /* Active queue card */

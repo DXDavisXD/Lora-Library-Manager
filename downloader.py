@@ -111,9 +111,21 @@ def metadata_belongs_to_file(metadata: dict, filename: str) -> bool:
     unwrapped = unwrap_civitai_metadata(metadata)
     files = unwrapped.get("files", [])
     if isinstance(files, list) and len(files) > 0:
+        import re
+        # Normalize names: lowercase, strip common prefixes
+        def normalize(name_str: str) -> str:
+            if not name_str:
+                return ""
+            # Strip leading digits and underscore (e.g. 1765641621390_)
+            s = re.sub(r'^\d+_', '', name_str.lower())
+            return s
+            
+        target = normalize(filename)
         for f in files:
-            if isinstance(f, dict) and f.get("name") == filename:
-                return True
+            if isinstance(f, dict):
+                f_name = f.get("name")
+                if f_name and normalize(f_name) == target:
+                    return True
         return False
     return True
 
@@ -319,6 +331,14 @@ def save_metadata_if_missing(model_path: Path, civitai_metadata: dict) -> dict:
             json.dump(merged_data, output_file, indent=2, ensure_ascii=False)
         os.replace(tmp_path, write_path)
         log_operation(f"Saved metadata: {write_path}")
+
+        # Delete redundant metadata.json
+        if shared_path.exists() and shared_path.resolve() != write_path.resolve():
+            try:
+                shared_path.unlink()
+                log_operation(f"Deleted redundant metadata.json in {model_folder}")
+            except OSError:
+                pass
 
         return make_status("saved", write_path, f"{write_path.name} saved.")
     except Exception as e:

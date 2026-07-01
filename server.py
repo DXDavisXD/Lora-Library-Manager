@@ -62,7 +62,10 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
 
-        if path == "/api/user_data_summary":
+        if path == "/" or path == "/index.html":
+            self.path = "/gallery.html"
+            super().do_GET()
+        elif path == "/api/user_data_summary":
             self.handle_get_summary()
         elif path == "/api/get_user_data":
             relative_path = query.get("relative_path", [None])[0]
@@ -1014,10 +1017,12 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
-def make_handler(lora_root: Path):
+def make_handler():
     class CustomHandler(GalleryHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
-            super().__init__(*args, lora_root=lora_root, directory=str(lora_root), **kwargs)
+            from config import get_lora_root
+            current_root = get_lora_root()
+            super().__init__(*args, lora_root=current_root, directory=str(current_root), **kwargs)
     return CustomHandler
 
 def start_server(lora_root: Path, port: int = 8000) -> None:
@@ -1026,7 +1031,7 @@ def start_server(lora_root: Path, port: int = 8000) -> None:
     _job_queue = JobQueue(lora_root)
     _job_queue.start_worker()
 
-    handler = make_handler(lora_root)
+    handler = make_handler()
     server = None
     actual_port = port
     
@@ -1034,7 +1039,7 @@ def start_server(lora_root: Path, port: int = 8000) -> None:
     for p in range(port, port + 20):
         try:
             # Bind to localhost specifically
-            server = socketserver.TCPServer(("127.0.0.1", p), handler)
+            server = socketserver.ThreadingTCPServer(("127.0.0.1", p), handler)
             actual_port = p
             break
         except OSError:

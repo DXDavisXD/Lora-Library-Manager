@@ -45,47 +45,124 @@ def metadata_belongs_to_file(metadata: dict, filename: str) -> bool:
     unwrapped = unwrap_metadata(metadata)
     files = unwrapped.get("files", [])
     if isinstance(files, list) and len(files) > 0:
+        # Normalize names: lowercase, strip common prefixes
+        def normalize(name_str: str) -> str:
+            if not name_str:
+                return ""
+            # Strip leading digits and underscore (e.g. 1765641621390_)
+            s = re.sub(r'^\d+_', '', name_str.lower())
+            return s
+            
+        target = normalize(filename)
         for f in files:
-            if isinstance(f, dict) and f.get("name") == filename:
-                return True
+            if isinstance(f, dict):
+                f_name = f.get("name")
+                if f_name and normalize(f_name) == target:
+                    return True
         return False
     return True
 
 
+def merge_metadata_dicts(dict1: dict, dict2: dict) -> dict:
+    merged = dict1.copy()
+    for k, v in dict2.items():
+        if k not in merged or merged[k] is None:
+            merged[k] = v
+        elif isinstance(merged[k], dict) and isinstance(v, dict):
+            merged[k] = merge_metadata_dicts(merged[k], v)
+        elif isinstance(merged[k], list) and isinstance(v, list):
+            for item in v:
+                if item not in merged[k]:
+                    merged[k].append(item)
+    return merged
+
+
 # Load metadata.json or sidecar metadata files from a LoRA model folder if they exist.
 def load_metadata(lora_file: Path) -> dict:
-    # 1. Try <stem>.json (specific to this version)
-    path = lora_file.parent / f"{lora_file.stem}.json"
-    if path.exists():
+    stem_json = lora_file.parent / f"{lora_file.stem}.json"
+    civitai_info = lora_file.parent / f"{lora_file.stem}.civitai.info"
+    metadata_json = get_metadata_path(lora_file)
+
+    data_stem = {}
+    data_civitai = {}
+    data_meta = {}
+
+    # Load stem.json (always trust since it has the exact same name as the safetensors)
+    if stem_json.exists():
         try:
-            with path.open("r", encoding="utf-8") as metadata_file:
-                data = json.load(metadata_file)
-                if metadata_belongs_to_file(data, lora_file.name):
-                    return data
+            with stem_json.open("r", encoding="utf-8") as f:
+                data_stem = json.load(f)
         except Exception:
             pass
 
-    # 2. Try <stem>.civitai.info (specific to this version)
-    path = lora_file.parent / f"{lora_file.stem}.civitai.info"
-    if path.exists():
+    # Load stem.civitai.info (always trust since it has the exact same name as the safetensors)
+    if civitai_info.exists():
         try:
-            with path.open("r", encoding="utf-8") as metadata_file:
-                data = json.load(metadata_file)
-                if metadata_belongs_to_file(data, lora_file.name):
-                    return data
+            with civitai_info.open("r", encoding="utf-8") as f:
+                data_civitai = json.load(f)
         except Exception:
             pass
 
-    # 3. Try standard metadata.json
-    path = get_metadata_path(lora_file)
-    if path.exists():
+    # Load metadata.json
+    if metadata_json.exists():
         try:
-            with path.open("r", encoding="utf-8") as metadata_file:
-                data = json.load(metadata_file)
-                if metadata_belongs_to_file(data, lora_file.name):
-                    return data
+            with metadata_json.open("r", encoding="utf-8") as f:
+                d = json.load(f)
+                
+                # Check if it belongs to this model, or if it is the only model in the folder
+                belongs = False
+                if metadata_belongs_to_file(d, lora_file.name):
+                    belongs = True
+                else:
+                    try:
+                        from config import LORA_EXTENSIONS
+                        loras_in_folder = []
+                        for ext in LORA_EXTENSIONS:
+                            loras_in_folder.extend(list(lora_file.parent.glob(f"*{ext}")))
+                        if len(loras_in_folder) == 1:
+                            belongs = True
+                    except Exception:
+                        pass
+                
+                if belongs:
+                    data_meta = d
         except Exception:
             pass
+
+    # Merge all valid metadata dictionaries
+    merged_data = {}
+    if data_stem:
+        merged_data = data_stem
+    if data_civitai:
+        merged_data = merge_metadata_dicts(merged_data, data_civitai) if merged_data else data_civitai
+    if data_meta:
+        merged_data = merge_metadata_dicts(merged_data, data_meta) if merged_data else data_meta
+
+    # If we merged multiple files, write the combined metadata back to <stem>.json
+    # and clean up standard metadata.json/civitai.info to avoid duplication
+    if merged_data:
+        try:
+            if not is_dry_run():
+                with stem_json.open("w", encoding="utf-8") as f:
+                    json.dump(merged_data, f, indent=2)
+                
+                # Delete redundant files
+                if metadata_json.exists() and metadata_json.resolve() != stem_json.resolve():
+                    try:
+                        metadata_json.unlink()
+                        log_operation(f"Deleted redundant metadata.json in {lora_file.parent}")
+                    except OSError:
+                        pass
+                if civitai_info.exists() and civitai_info.resolve() != stem_json.resolve():
+                    try:
+                        civitai_info.unlink()
+                        log_operation(f"Deleted redundant civitai.info in {lora_file.parent}")
+                    except OSError:
+                        pass
+        except Exception as e:
+            log_operation(f"Error saving merged metadata for {lora_file.name}: {e}")
+
+        return merged_data
 
     return {}
 
@@ -898,7 +975,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             flex-shrink: 0;
         }}
 
-        h1 {
+        h1 {{
             margin: 0;
             font-size: 20px;
             font-weight: 800;
@@ -907,9 +984,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             -webkit-text-fill-color: transparent;
             letter-spacing: -0.025em;
             white-space: nowrap;
-        }
+        }}
 
-        .btn-manage-link {
+        .btn-manage-link {{
             text-decoration: none;
             display: inline-flex;
             align-items: center;
@@ -924,13 +1001,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             cursor: pointer;
             transition: var(--transition);
             gap: 6px;
-        }
+        }}
 
-        .btn-manage-link:hover {
+        .btn-manage-link:hover {{
             background: rgba(99, 102, 241, 0.25);
             border-color: var(--accent);
             color: #fff;
-        }
+        }}
 
         .search-wrapper {{
             position: relative;

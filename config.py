@@ -82,7 +82,7 @@ def set_civitai_api_key(value: str) -> None:
 # Update the LoRA root folder and persist to settings.json.
 def set_lora_root(value: str) -> None:
     settings = load_settings()
-    settings["lora_root"] = value.strip()
+    settings["lora_root"] = value.strip().strip('"').strip("'").strip()
     save_settings(settings)
 
 
@@ -149,7 +149,7 @@ def get_lora_root() -> Path:
     _settings = load_settings()
     custom_root = _settings.get("lora_root")
     if custom_root:
-        return Path(custom_root)
+        return Path(str(custom_root).strip().strip('"').strip("'").strip())
     return LORA_ROOT
 
 

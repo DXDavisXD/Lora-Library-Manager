@@ -427,8 +427,10 @@ class JobQueue:
                 _local_state.current_job = next_job
                 
                 try:
+                    from config import get_lora_root
+                    active_root = get_lora_root()
                     with contextlib.redirect_stdout(qs):
-                        next_job.execute(self.lora_root)
+                        next_job.execute(active_root)
                     next_job.status = "completed"
                     next_job.progress_percent = 100
                     next_job.progress_message = "Completed successfully."
@@ -441,5 +443,11 @@ class JobQueue:
                     next_job.end_time = datetime.now().isoformat()
                     _local_state.current_job = None
                     self.save_state()
+                    # Trigger the __DONE__ sentinel to close any active log streams
+                    for cb in log_callbacks:
+                        try:
+                            cb(None)
+                        except Exception:
+                            pass
             else:
                 time.sleep(0.5)
