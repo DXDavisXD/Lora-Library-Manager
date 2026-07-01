@@ -4,19 +4,41 @@
 
 All notable changes to \*\*LoRA Library Manager\*\* are documented in this file.
 
+# Changelog
 
+All notable changes to **LoRA Library Manager** are documented in this file.
 
 This project follows a milestone-based changelog rather than strict semantic versioning while development is ongoing.
 
+---
 
+# v2.2.0 (Current)
 
-\---
+This release implements a web management control panel and introduces deep, backward-compatible integration with external Stable Diffusion WebUIs (Forge/AUTOMATIC1111).
 
+---
 
+## ✨ Added
 
-\# v2.0 (Current)
+### Web Management Control Panel
+- Real-time Server-Sent Events (SSE) log terminal streaming sync details directly to the UI
+- Live stats dashboard showing total file count, library size, missing previews, and missing metadata count
+- Button actions to trigger automatic refresh, scan library changes, download missing metadata/previews, and migrate metadata
+- Configurable settings controls (dry run, verbose mode) from the web interface
 
+### External WebUI Compatibility & Sidecar Validation
+- Non-destructive metadata updates: fetches CivitAI details and merges them authoritatively into existing sidecars, keeping custom fields intact
+- Auto-imports WebUI-defined fields (activation text, preferred weight, negative text, notes) into the manager's `user_data.json` without overwriting existing data
+- Strict `is_complete_metadata` helper checks sidecars for required official fields, downloading only when incomplete
+- Lenient regex-based JSON fallback parser loads sidecars and automatically repairs minor syntax errors (like missing commas)
+- Prevents redundant/duplicate metadata file creation by saving strictly to a single `<model_name>.json` file
 
+### CLI Improvements
+- Categorized CLI submenus under themed zones (`CORE WORKFLOW`, `LIBRARY MAINTENANCE`, `IMPORT & BACKUPS`, `SETTINGS & SYSTEM`) with simplified menu option names and intuitive icons
+
+---
+
+# v2.0
 
 This release transforms LoRA Library Manager from a simple organization utility into a complete local-first LoRA management suite.
 

@@ -12,7 +12,8 @@ from config import (
     log_operation,
     LORA_EXTENSIONS,
     is_lora_file,
-    PREVIEW_EXTENSIONS
+    PREVIEW_EXTENSIONS,
+    is_complete_metadata,
 )
 from civitai import get_model_by_hash, get_model, compute_sha256
 from gallery import load_metadata, unwrap_metadata, get_sha256_from_metadata
@@ -329,7 +330,8 @@ def run_asset_auditer_downloader(lora_root: Path) -> None:
     missing_both = []
 
     for path in unique_files:
-        has_metadata = bool(load_metadata(path))
+        meta_dict = load_metadata(path)
+        has_metadata = bool(meta_dict) and is_complete_metadata(meta_dict)
         has_preview = preview_image_exists(path)
 
         if not has_metadata and not has_preview:
@@ -408,5 +410,81 @@ def run_asset_auditer_downloader(lora_root: Path) -> None:
     print(f"Failed / Not Found:     {fail_count} models.")
 
     if success_count > 0:
+        print("\nRegenerating gallery index...")
+        refresh_gallery(lora_root)
+
+
+def migrate_metadata_to_user_data(lora_root: Path) -> None:
+    print("\n==================================================")
+    print(" MIGRATING EXTERNAL METADATA TO USER DATA")
+    print("==================================================")
+    print("Scanning library for metadata files...")
+
+    metadata_files = []
+    ignored_names = {"collections.json", "library_index.json", "user_data.json", "settings.json"}
+    for p in lora_root.rglob("*.json"):
+        if p.name in ignored_names:
+            continue
+        metadata_files.append(p)
+
+    total_files = len(metadata_files)
+    print(f"Found {total_files} metadata files.")
+
+    migrated_count = 0
+    skipped_count = 0
+
+    from downloader import import_metadata_to_user_data_dict
+
+    for idx, p in enumerate(metadata_files, 1):
+        folder = p.parent
+        user_data_path = folder / "user_data.json"
+
+        try:
+            with p.open("r", encoding="utf-8") as f:
+                meta = json.load(f)
+        except Exception as e:
+            print(f"  [{idx}/{total_files}] Error loading metadata from {p.name}: {e}")
+            skipped_count += 1
+            continue
+
+        if not isinstance(meta, dict):
+            skipped_count += 1
+            continue
+
+        user_data = {}
+        if user_data_path.exists():
+            try:
+                with user_data_path.open("r", encoding="utf-8") as f:
+                    user_data = json.load(f)
+            except Exception:
+                pass
+
+        if not isinstance(user_data, dict):
+            user_data = {}
+
+        modified = import_metadata_to_user_data_dict(meta, user_data)
+        if modified:
+            user_data["schema_version"] = 1
+            user_data["last_modified"] = datetime.now().isoformat() + "Z"
+            if is_dry_run():
+                print(f"  [{idx}/{total_files}] [DRY RUN] Would update user_data.json in {folder.name}")
+            else:
+                try:
+                    with user_data_path.open("w", encoding="utf-8") as f:
+                        json.dump(user_data, f, indent=2)
+                    print(f"  [{idx}/{total_files}] Updated user_data.json in {folder.name}")
+                except Exception as e:
+                    print(f"  [{idx}/{total_files}] Error saving user_data.json: {e}")
+                    skipped_count += 1
+                    continue
+            migrated_count += 1
+        else:
+            skipped_count += 1
+
+    print("\nMigration complete.")
+    print(f"Updated sidecars: {migrated_count}")
+    print(f"Skipped sidecars: {skipped_count}")
+
+    if migrated_count > 0 and not is_dry_run():
         print("\nRegenerating gallery index...")
         refresh_gallery(lora_root)

@@ -17,6 +17,7 @@ from config import (
     set_verbose,
     log_operation,
     TMP_CLEANUP_AGE_SECONDS,
+    is_complete_metadata,
 )
 from downloader import (
     download_preview_if_missing,
@@ -24,6 +25,7 @@ from downloader import (
     model_assets_complete,
     preview_image_exists,
     save_metadata_if_missing,
+    load_json_lenient,
 )
 from gallery import build_gallery_index, save_gallery_html, metadata_belongs_to_file
 from library_index import load_library_index, detect_library_changes
@@ -82,25 +84,26 @@ def print_menu() -> None:
     dry_status = "ON" if is_dry_run() else "OFF"
     verbose_status = "ON" if is_verbose() else "OFF"
     
-    print("--- CORE ACTIONS ---")
-    print("  1. Run Automatic Sync (Organize + Asset Download + Rebuild Gallery)")
-    print("  2. Start Gallery Web Server")
-    print("  3. Run Quick Refresh (Scan files & regenerate gallery)")
-    print("  4. Open Migration Wizard")
+    print("─── ⚡ CORE WORKFLOW ───")
+    print("  1. 🔄 Run Automatic Sync (Organize + Asset Download + Rebuild Gallery)")
+    print("  2. 🚀 Start Gallery Web Server")
     print()
-    print("--- ADVANCED OPERATIONS ---")
-    print("  5. Open Manual Operations Submenu")
-    print("  6. Export Library Manifest")
-    print("  7. Import Library Manifest")
-    print("  8. Open Diagnostics & Cleanup Submenu")
+    print("─── 🗂️ LIBRARY MAINTENANCE ───")
+    print("  3. ⚡ Quick Refresh (Scan files & regenerate gallery)")
+    print("  4. 🔧 Open Manual Operations Submenu (Targeted organize, downloads, or rebuilds)")
+    print("  5. 🔍 Open Diagnostics & Cleanup Submenu (Duplicates, audits, WebUI migration)")
     print()
-    print("--- CONFIGURATION & SETTINGS ---")
-    print(f"  9. Toggle Dry Run Mode    [Currently: {dry_status}]")
-    print(f"  10. Toggle Verbose Mode   [Currently: {verbose_status}]")
-    print("  11. Set CivitAI API Key")
+    print("─── 🧙‍♂️ IMPORT & BACKUPS ───")
+    print("  6. 🗺️ Open Folder Migration Wizard (Convert folder structure to collections)")
+    print("  7. 📤 Export Library Backup Manifest")
+    print("  8. 📥 Import Library Backup Manifest")
     print()
-    print("--- SYSTEM ---")
-    print("  0. Exit")
+    print("─── ⚙️ SETTINGS & SYSTEM ───")
+    print(f"  9. 🚫 Toggle Dry Run Mode    [Currently: {dry_status}]")
+    print(f"  10. 🔊 Toggle Verbose Mode   [Currently: {verbose_status}]")
+    print("  11. 🔑 Set CivitAI API Key")
+    print()
+    print("  0. 🚪 Exit")
     print()
 
 
@@ -133,29 +136,29 @@ def load_existing_metadata(model_path: Path) -> dict | None:
         except Exception:
             return None
     else:
-        # Check <stem>.json first
-        path = model_path.parent / f"{model_path.stem}.json"
-        if path.exists():
-            try:
-                with path.open("r", encoding="utf-8") as metadata_file:
-                    data = json.load(metadata_file)
-                    if metadata_belongs_to_file(data, model_path.name):
-                        return data
-            except Exception:
-                pass
-                
-        # Check metadata.json fallback
+        # Load and merge both metadata.json and <stem>.json if they exist
+        merged_data = {}
+        found = False
+
+        # 1. Load from metadata.json (shared/fallback)
         path = model_path.parent / "metadata.json"
         if path.exists():
-            try:
-                with path.open("r", encoding="utf-8") as metadata_file:
-                    data = json.load(metadata_file)
-                    if metadata_belongs_to_file(data, model_path.name):
-                        return data
-            except Exception:
-                pass
+            data = load_json_lenient(path)
+            if isinstance(data, dict) and metadata_belongs_to_file(data, model_path.name):
+                from downloader import merge_metadata
+                merged_data = merge_metadata(merged_data, data)
+                found = True
 
-    return None
+        # 2. Load from <stem>.json (specific/target)
+        path = model_path.parent / f"{model_path.stem}.json"
+        if path.exists():
+            data = load_json_lenient(path)
+            if isinstance(data, dict) and metadata_belongs_to_file(data, model_path.name):
+                from downloader import merge_metadata
+                merged_data = merge_metadata(merged_data, data)
+                found = True
+
+        return merged_data if found else None
 
 
 
@@ -222,7 +225,7 @@ def process_model_assets(
         return summary
 
     metadata = load_existing_metadata(model_file)
-    needs_remote_metadata = metadata is None and (
+    needs_remote_metadata = (metadata is None or not is_complete_metadata(metadata)) and (
         download_metadata or (download_preview and not preview_image_exists(model_file))
     )
 
@@ -451,27 +454,6 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
         print_summary("Quick Refresh", run_quick_refresh(lora_root))
     elif choice == "4":
         while True:
-            print("\n--- Migration Wizard ---")
-            print("1. Preview Library Organization (Read-Only)")
-            print("2. Import Existing Library (Convert Folders to Collections)")
-            print("3. Go Back to Main Menu")
-            print()
-            sub_choice = input("Choose an option: ").strip()
-            
-            if sub_choice == "1":
-                from migration import scan_library_hierarchy, generate_migration_preview
-                print("Scanning library for migration preview...")
-                data = scan_library_hierarchy(lora_root)
-                generate_migration_preview(data)
-            elif sub_choice == "2":
-                from migration import import_existing_library
-                import_existing_library(lora_root)
-            elif sub_choice == "3":
-                break
-            else:
-                print("Please choose a number from 1 to 3.")
-    elif choice == "5":
-        while True:
             print("\n--- Manual Operations Submenu ---")
             print("1. Process Single File")
             print("2. Organize Only")
@@ -503,7 +485,55 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
                 break
             else:
                 print("Please choose a number from 1 to 7.")
+    elif choice == "5":
+        while True:
+            print("\n--- Diagnostics & Cleanup Submenu ---")
+            print("1. Run CivitAI Update Detector")
+            print("2. Run Duplicate LoRA Finder & Cleanup")
+            print("3. Run Asset Audit & Bulk Downloader")
+            print("4. Migrate External Metadata to User Data")
+            print("5. Go Back to Main Menu")
+            print()
+            diag_choice = input("Choose a diagnostics option: ").strip()
+            
+            if diag_choice == "1":
+                from diagnostics import run_update_detector
+                run_update_detector(lora_root)
+            elif diag_choice == "2":
+                from diagnostics import run_duplicate_finder
+                run_duplicate_finder(lora_root)
+            elif diag_choice == "3":
+                from diagnostics import run_asset_auditer_downloader
+                run_asset_auditer_downloader(lora_root)
+            elif diag_choice == "4":
+                from diagnostics import migrate_metadata_to_user_data
+                migrate_metadata_to_user_data(lora_root)
+            elif diag_choice == "5":
+                break
+            else:
+                print("Please choose a number from 1 to 5.")
     elif choice == "6":
+        while True:
+            print("\n--- Migration Wizard ---")
+            print("1. Preview Library Organization (Read-Only)")
+            print("2. Import Existing Library (Convert Folders to Collections)")
+            print("3. Go Back to Main Menu")
+            print()
+            sub_choice = input("Choose an option: ").strip()
+            
+            if sub_choice == "1":
+                from migration import scan_library_hierarchy, generate_migration_preview
+                print("Scanning library for migration preview...")
+                data = scan_library_hierarchy(lora_root)
+                generate_migration_preview(data)
+            elif sub_choice == "2":
+                from migration import import_existing_library
+                import_existing_library(lora_root)
+            elif sub_choice == "3":
+                break
+            else:
+                print("Please choose a number from 1 to 3.")
+    elif choice == "7":
         from datetime import datetime
         default_name = f"backup/{datetime.now().strftime('%d.%m.%Y-%H.%M')}.json"
         manifest_filename = input(f"Enter output manifest filename (default: {default_name}): ").strip()
@@ -514,7 +544,7 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
             manifest_path = lora_root / manifest_path
         from manifest import export_library_manifest
         export_library_manifest(lora_root, manifest_path)
-    elif choice == "7":
+    elif choice == "8":
         from datetime import datetime
         backup_dir = lora_root / "backup"
         backups = []
@@ -569,29 +599,6 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
         # Automatically refresh the gallery to reflect changes
         print("\nRefreshing gallery...")
         refresh_gallery(lora_root)
-    elif choice == "8":
-        while True:
-            print("\n--- Diagnostics & Cleanup Submenu ---")
-            print("1. Run CivitAI Update Detector")
-            print("2. Run Duplicate LoRA Finder & Cleanup")
-            print("3. Run Asset Audit & Bulk Downloader")
-            print("4. Go Back to Main Menu")
-            print()
-            diag_choice = input("Choose a diagnostics option: ").strip()
-            
-            if diag_choice == "1":
-                from diagnostics import run_update_detector
-                run_update_detector(lora_root)
-            elif diag_choice == "2":
-                from diagnostics import run_duplicate_finder
-                run_duplicate_finder(lora_root)
-            elif diag_choice == "3":
-                from diagnostics import run_asset_auditer_downloader
-                run_asset_auditer_downloader(lora_root)
-            elif diag_choice == "4":
-                break
-            else:
-                print("Please choose a number from 1 to 4.")
     elif choice == "9":
         new_val = not is_dry_run()
         set_dry_run(new_val)
@@ -616,7 +623,6 @@ def handle_choice(choice: str, lora_root: Path) -> bool:
     elif choice == "0":
         print("Goodbye.")
         return False
-    else:
         print("Please choose a number from 0 to 11.")
 
     return True

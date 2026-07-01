@@ -27,6 +27,7 @@ from config import (
     is_lora_file,
     log_operation,
     PREVIEW_EXTENSIONS,
+    is_complete_metadata,
 )
 
 # Bump this whenever the cache schema changes in a breaking way.
@@ -244,9 +245,26 @@ def detect_library_changes(lora_root: Path, index: dict) -> dict:
             continue  # Can't stat file — skip silently
 
         # Fast assets-complete validation:
-        # 1. Check if metadata exists (metadata_mtime > 0.0)
+        # 1. Check if complete metadata exists (checking fields, not just presence)
         # 2. Check if a local preview image exists (without parsing JSON)
-        has_metadata = live_fp["metadata_mtime"] > 0.0
+        has_metadata = False
+        if live_fp["metadata_mtime"] > 0.0:
+            candidates = [
+                lora_file.parent / f"{lora_file.stem}.json",
+                lora_file.parent / f"{lora_file.stem}.civitai.info",
+                lora_file.parent / "metadata.json",
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    try:
+                        with candidate.open("r", encoding="utf-8") as f:
+                            meta = json.load(f)
+                        if isinstance(meta, dict) and is_complete_metadata(meta):
+                            has_metadata = True
+                            break
+                    except Exception:
+                        pass
+
         has_preview = False
         for ext in PREVIEW_EXTENSIONS:
             if (lora_file.parent / f"{lora_file.stem}{ext}").exists():

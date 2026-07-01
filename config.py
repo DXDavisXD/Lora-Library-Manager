@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 APP_NAME = "LoRA Library Manager"
-VERSION = "2.0.0"
+VERSION = "2.2.0"
 LORA_ROOT = Path(r"Path to LoRA folder")  # Default LoRA root folder; can be overridden in settings.json
 LORA_EXTENSIONS = {".safetensors", ".ckpt", ".pt", ".bin"}
 PREVIEW_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -193,5 +193,27 @@ def clean_model_collections(collections: list, folder_path: Path) -> list:
         cleaned.append(c_clean)
         
     return cleaned
+
+
+def is_complete_metadata(metadata: dict) -> bool:
+    """Determine whether the metadata contains complete official CivitAI metadata."""
+    if not isinstance(metadata, dict):
+        return False
+    # Unwrap if wrapped in {"ok": True, "data": ...}
+    if metadata.get("ok") is True and isinstance(metadata.get("data"), dict):
+        metadata = metadata["data"]
+
+    has_model_id = "modelId" in metadata or "model_id" in metadata
+    has_version_id = "id" in metadata or "modelVersionId" in metadata or "version_id" in metadata
+
+    if not (has_model_id and has_version_id):
+        return False
+
+    # Check for core official fields to ensure it is not a minimal stub
+    core_fields = ["trainedWords", "baseModel", "creator", "description", "files"]
+    found_count = sum(1 for field in core_fields if field in metadata)
+
+    return found_count >= 2
+
 
 

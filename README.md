@@ -42,6 +42,8 @@ The entire project runs locally. No cloud services are required.
 - Missing asset detection
 - Incremental library indexing
 - Smart refresh system
+- SD WebUI Compatibility (Forge/A1111 sidecar parsing/merging)
+- Lenient sidecar repair parser (recovers from missing commas, syntax errors)
 
 ---
 
@@ -67,6 +69,17 @@ Features include:
 - Base model filtering
 - Collection filtering
 - Sorting options
+
+---
+
+## 🎛 Web Management Dashboard
+
+Access a live control panel at `http://localhost:8000/manage` to manage your library from your browser:
+
+- **Live Logs Streaming**: Stream real-time terminal sync details directly via Server-Sent Events (SSE).
+- **Library Health Dashboard**: Monitor total file count, size, missing previews, and missing metadata at a glance.
+- **Sync Control Triggers**: Run Automatic Sync, Quick Refresh, Metadata/Preview Downloads, and metadata migrations with a single click.
+- **Settings Configuration**: Toggle dry-run and verbose settings dynamically from the web interface.
 
 ---
 

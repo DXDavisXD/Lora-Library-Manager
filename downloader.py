@@ -16,6 +16,7 @@ from config import (
     is_verbose,
     log_operation,
     is_lora_file,
+    is_complete_metadata,
 )
 
 METADATA_FILENAME = "metadata.json"
@@ -127,7 +128,7 @@ def model_file_assets_complete(model_file: Path) -> bool:
             try:
                 with path.open("r", encoding="utf-8") as f:
                     data = json.load(f)
-                    if metadata_belongs_to_file(data, model_file.name):
+                    if metadata_belongs_to_file(data, model_file.name) and is_complete_metadata(data):
                         metadata_exists = True
                         break
             except Exception:
@@ -150,47 +151,184 @@ def model_assets_complete(model_path: Path) -> bool:
         return model_file_assets_complete(model_path)
 
 
+def merge_metadata(old_meta: dict, new_meta: dict) -> dict:
+    """Refreshed metadata remains authoritative. Unknown or custom keys in old metadata are preserved."""
+    if not isinstance(old_meta, dict):
+        old_meta = {}
+    if not isinstance(new_meta, dict):
+        new_meta = {}
+    merged = dict(new_meta)
+    for k, v in old_meta.items():
+        if k not in merged:
+            merged[k] = v
+    return merged
+
+
+def import_metadata_to_user_data_dict(metadata: dict, user_data: dict) -> bool:
+    """Import useful metadata fields into user_data dictionary. Returns True if modified."""
+    if not isinstance(metadata, dict) or not isinstance(user_data, dict):
+        return False
+    modified = False
+
+    # 1. activation text -> personal_trigger_words
+    act_text = metadata.get("activation text")
+    if act_text:
+        existing_triggers = user_data.get("personal_trigger_words", [])
+        if not existing_triggers:
+            if isinstance(act_text, str):
+                parsed = [t.strip() for t in act_text.split(",") if t.strip()]
+            elif isinstance(act_text, list):
+                parsed = [str(t).strip() for t in act_text if str(t).strip()]
+            else:
+                parsed = []
+            if parsed:
+                user_data["personal_trigger_words"] = parsed
+                modified = True
+
+    # 2. preferred weight -> preferred_weight
+    pref_weight = metadata.get("preferred weight")
+    if pref_weight is not None:
+        if "preferred_weight" not in user_data or user_data.get("preferred_weight") is None:
+            try:
+                user_data["preferred_weight"] = float(pref_weight)
+                modified = True
+            except (ValueError, TypeError):
+                pass
+
+    # 3. negative text -> negative_prompt
+    neg_text = metadata.get("negative text")
+    if neg_text and isinstance(neg_text, str) and neg_text.strip():
+        existing_neg = user_data.get("negative_prompt")
+        if not existing_neg or not existing_neg.strip():
+            user_data["negative_prompt"] = neg_text.strip()
+            modified = True
+
+    # 4. notes -> notes
+    notes = metadata.get("notes")
+    if notes and isinstance(notes, str) and notes.strip():
+        existing_notes = user_data.get("notes", "")
+        if not existing_notes or not existing_notes.strip():
+            user_data["notes"] = notes.strip()
+            modified = True
+
+    return modified
+
+
+def load_json_lenient(path: Path) -> dict:
+    """Load JSON from path, using a regex fallback parser if standard parsing fails."""
+    if not path.exists():
+        return {}
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log_operation(f"Standard JSON parse failed for {path} ({e}). Attempting lenient regex extraction...")
+        try:
+            content = path.read_text(encoding="utf-8")
+            import re
+            extracted = {}
+            # Match pattern: "key"\s*:\s*(value)
+            pattern = re.compile(
+                r'"([^"\\]*(?:\\.[^"\\]*)*)"\s*:\s*(?:"([^"\\]*(?:\\.[^"\\]*)*)"|(-?\d+(?:\.\d+)?)|(true|false|null))'
+            )
+            for match in pattern.finditer(content):
+                key = match.group(1)
+                if match.group(2) is not None:
+                    val = match.group(2)
+                    val = val.replace('\\"', '"').replace('\\\\', '\\').replace('\\n', '\n')
+                    extracted[key] = val
+                elif match.group(3) is not None:
+                    num_str = match.group(3)
+                    try:
+                        extracted[key] = float(num_str) if '.' in num_str else int(num_str)
+                    except ValueError:
+                        extracted[key] = num_str
+                elif match.group(4) is not None:
+                    bool_str = match.group(4)
+                    if bool_str == 'true':
+                        extracted[key] = True
+                    elif bool_str == 'false':
+                        extracted[key] = False
+                    else:
+                        extracted[key] = None
+            log_operation(f"Lenient parse recovered keys: {list(extracted.keys())}")
+            return extracted
+        except Exception as ex:
+            log_operation(f"Lenient parse failed for {path}: {ex}")
+            return {}
+
+
 # Save CivitAI metadata to model-specific json sidecar without overwriting.
 def save_metadata_if_missing(model_path: Path, civitai_metadata: dict) -> dict:
+    from datetime import datetime
     model_folder, model_stem = _resolve_model_path_info(model_path)
     target_path = model_folder / f"{model_stem}.json"
     shared_path = model_folder / "metadata.json"
 
-    # If the target file already exists, skip
+    # Load existing metadata from BOTH paths if they exist, merging them
+    # to ensure user-defined custom fields from metadata.json are not lost
+    existing_data = {}
+    
+    # 1. Load from metadata.json first
+    if shared_path.exists():
+        shared_data = load_json_lenient(shared_path)
+        if isinstance(shared_data, dict):
+            existing_data = merge_metadata(existing_data, shared_data)
+            
+    # 2. Load from <model_name>.json next (overwriting fallback values)
     if target_path.exists():
-        return make_status("skipped", target_path, f"{model_stem}.json already exists.")
+        target_data = load_json_lenient(target_path)
+        if isinstance(target_data, dict):
+            existing_data = merge_metadata(existing_data, target_data)
+
+    unwrapped_new = unwrap_civitai_metadata(civitai_metadata)
+    merged_data = merge_metadata(existing_data, unwrapped_new)
+
+    # Import useful fields to user_data.json
+    user_data_path = model_folder / "user_data.json"
+    user_data = {}
+    if user_data_path.exists():
+        try:
+            with user_data_path.open("r", encoding="utf-8") as f:
+                user_data = json.load(f)
+        except Exception:
+            pass
+
+    user_modified = import_metadata_to_user_data_dict(merged_data, user_data)
+    if user_modified:
+        user_data["schema_version"] = 1
+        user_data["last_modified"] = datetime.now().isoformat() + "Z"
+        if not is_dry_run():
+            try:
+                with user_data_path.open("w", encoding="utf-8") as f:
+                    json.dump(user_data, f, indent=2)
+                log_operation(f"Imported metadata fields to user_data: {user_data_path}")
+            except Exception as e:
+                log_operation(f"Error saving user_data: {e}")
+
+    write_path = target_path
 
     if is_dry_run():
-        log_operation(f"[DRY RUN] Would save metadata to: {target_path}")
-        return make_status("saved", target_path, f"{model_stem}.json saved (dry run).")
+        log_operation(f"[DRY RUN] Would save metadata to: {write_path}")
+        return make_status("saved", write_path, f"{write_path.name} saved (dry run).")
 
     model_folder.mkdir(parents=True, exist_ok=True)
-    tmp_path = target_path.with_suffix(".json.tmp")
+    tmp_path = write_path.with_suffix(write_path.suffix + ".tmp")
     try:
-        unwrapped_data = unwrap_civitai_metadata(civitai_metadata)
         with tmp_path.open("w", encoding="utf-8") as output_file:
-            json.dump(unwrapped_data, output_file, indent=2)
-        os.replace(tmp_path, target_path)
-        log_operation(f"Saved metadata: {target_path}")
+            json.dump(merged_data, output_file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, write_path)
+        log_operation(f"Saved metadata: {write_path}")
 
-        # For backwards compatibility, also write to metadata.json if missing
-        if not shared_path.exists():
-            try:
-                with shared_path.open("w", encoding="utf-8") as shared_file:
-                    json.dump(unwrapped_data, shared_file, indent=2)
-                log_operation(f"Saved fallback shared metadata: {shared_path}")
-            except OSError:
-                pass
-
-        return make_status("saved", target_path, f"{model_stem}.json saved.")
+        return make_status("saved", write_path, f"{write_path.name} saved.")
     except Exception as e:
         if tmp_path.exists():
             try:
                 tmp_path.unlink()
             except OSError:
                 pass
-        log_operation(f"Error saving metadata to {target_path}: {e}")
-        return make_status("error", target_path, str(e))
+        log_operation(f"Error saving metadata to {write_path}: {e}")
+        return make_status("error", write_path, str(e))
 
 
 

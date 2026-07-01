@@ -2573,7 +2573,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             flex-direction: column;
             gap: 16px;
-            overflow: hidden; /* Column itself is not scrollable */
+            overflow-y: auto;
             height: 100%;
             box-sizing: border-box;
         }}
@@ -2961,7 +2961,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             flex-direction: column;
             gap: 20px;
-            overflow: hidden; /* Changed from overflow-y: auto */
+            overflow-y: auto;
             padding: 24px;
             background: rgba(0, 0, 0, 0.05);
             box-sizing: border-box;
@@ -3490,7 +3490,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                                             — No personal triggers yet —
                                             <button id="btn-add-trigger-placeholder" class="btn-mini" type="button" style="margin-top: 8px; width: fit-content; display: block;">+ Add Trigger</button>
                                         </div>
-                                        <div id="modal-personal-triggers" class="triggers-list-edit" style="border:none; background:transparent; padding:8px 12px 12px 12px; max-height:none; overflow:visible; display:flex; flex-wrap:wrap; gap:6px;">
+                                        <div id="modal-personal-triggers" class="triggers-list-edit" style="border:none; background:transparent; padding:8px 12px 12px 12px; max-height:220px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:6px;">
                                             <!-- pills here -->
                                         </div>
                                         <div class="add-trigger-form" id="personal-trigger-add-form" style="padding: 0 12px 12px 12px; display: none;">

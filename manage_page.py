@@ -504,6 +504,13 @@ def build_manage_page(lora_root: Path) -> str:
               <span class="btn-sub">Force regenerate gallery.html</span>
             </span>
           </button>
+          <button class="action-btn" id="btn-migrate" onclick="runTask('migrate-metadata')">
+            <span class="btn-icon">📦</span>
+            <span class="btn-label">
+              Migrate Metadata
+              <span class="btn-sub">Import WebUI fields to user_data.json</span>
+            </span>
+          </button>
         </div>
       </div>
 
@@ -564,7 +571,7 @@ def build_manage_page(lora_root: Path) -> str:
   // ── State ──────────────────────────────────────────────────────────────────
   let taskRunning = false;
   let eventSource = null;
-  const ALL_BTNS = ['btn-sync','btn-refresh','btn-organize','btn-previews','btn-metadata','btn-rebuild'];
+  const ALL_BTNS = ['btn-sync','btn-refresh','btn-organize','btn-previews','btn-metadata','btn-rebuild','btn-migrate'];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function toast(msg, type='info') {{
@@ -633,6 +640,7 @@ def build_manage_page(lora_root: Path) -> str:
       'download-previews': 'btn-previews',
       'download-metadata': 'btn-metadata',
       'rebuild-gallery': 'btn-rebuild',
+      'migrate-metadata': 'btn-migrate',
     }}[action] || '';
 
     clearLog();

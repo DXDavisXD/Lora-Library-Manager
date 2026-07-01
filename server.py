@@ -824,6 +824,7 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         valid_actions = {
             "sync", "quick-refresh", "organize",
             "download-previews", "download-metadata", "rebuild-gallery",
+            "migrate-metadata",
         }
         if action not in valid_actions:
             self.send_error_response(400, f"Unknown action: {action}")
@@ -878,6 +879,9 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     elif action == "rebuild-gallery":
                         from main import refresh_gallery
                         refresh_gallery(lora_root)
+                    elif action == "migrate-metadata":
+                        from diagnostics import migrate_metadata_to_user_data
+                        migrate_metadata_to_user_data(lora_root)
             except Exception as ex:
                 _task_log_queue.put(f"ERROR: {ex}")
             finally:

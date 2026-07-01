@@ -263,17 +263,10 @@ def fetch_and_save_metadata(version_id: int, target_dir: Path, filename: str) ->
         metadata = res["data"]
         stem = Path(filename).stem
         metadata_file = target_dir / f"{stem}.json"
-        shared_file = target_dir / "metadata.json"
         try:
             unwrapped = unwrap_civitai_metadata(metadata)
             with metadata_file.open("w", encoding="utf-8") as f:
                 json.dump(unwrapped, f, indent=2)
-            if not shared_file.exists():
-                try:
-                    with shared_file.open("w", encoding="utf-8") as sf:
-                        json.dump(unwrapped, sf, indent=2)
-                except OSError:
-                    pass
             return metadata
         except OSError as e:
             log_operation(f"Error saving metadata for version {version_id}: {e}")
