@@ -165,7 +165,7 @@ def delete_associated_assets(model_path: Path) -> None:
                     print(f"Error deleting metadata file {m_path.name}: {e}")
 
 
-def run_duplicate_finder(lora_root: Path) -> None:
+def run_duplicate_finder(lora_root: Path, strategy: str = "scan-only") -> None:
     print("\n==================================================")
     print(" DUPLICATE LORA FILE FINDER")
     print("==================================================")
@@ -193,8 +193,23 @@ def run_duplicate_finder(lora_root: Path) -> None:
     
     # Hash and group by hash
     files_by_hash = {}
+    total_to_hash = sum(len(paths) for paths in candidate_groups.values())
+    hashed_count = 0
+    from jobs import update_job_progress, get_current_job
+    job = get_current_job()
+
     for size, paths in candidate_groups.items():
         for path in paths:
+            hashed_count += 1
+            if job:
+                percent = int((hashed_count / total_to_hash) * 70) + 15
+                update_job_progress(
+                    percent=percent,
+                    current=hashed_count,
+                    total=total_to_hash,
+                    message=f"Hashing candidate files... ({hashed_count}/{total_to_hash})",
+                    item_name=path.name
+                )
             print(f"Hashing '{path.name}' ({size / (1024*1024):.1f} MB)...")
             try:
                 sha = compute_sha256(path)
@@ -230,7 +245,10 @@ def run_duplicate_finder(lora_root: Path) -> None:
     print("  4. Cancel (Do nothing)")
     print()
     
-    choice = input("Select a cleanup option (1-4): ").strip()
+    if strategy not in ("keep-oldest", "keep-newest", "scan-only"):
+        choice = input("Select a cleanup option (1-4): ").strip()
+    else:
+        choice = "1" if strategy == "keep-oldest" else "2" if strategy == "keep-newest" else "4"
     
     if choice not in ("1", "2", "3"):
         print("Cleanup cancelled. No files deleted.")

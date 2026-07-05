@@ -456,7 +456,20 @@ def build_gallery_index(library_dir: Path, use_cache: bool = True) -> list[dict]
     hits = 0
     misses = 0
 
-    for lora_file in unique_files:
+    total_files = len(unique_files)
+    from jobs import update_job_progress
+
+    for idx, lora_file in enumerate(unique_files):
+        current_idx = idx + 1
+        percent = int((idx / total_files) * 70) + 20
+        update_job_progress(
+            percent=percent,
+            current=current_idx,
+            total=total_files,
+            message=f"Compiling gallery database ({current_idx}/{total_files})",
+            item_name=lora_file.name
+        )
+
         key = make_index_key(lora_file, library_dir)
         current_keys.add(key)
         live_fp = get_file_fingerprint(lora_file)
@@ -888,23 +901,290 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LoRA Library Manager Gallery</title>
+    <title>LoRA Gallery</title>
+    <link rel="icon" href="/favicon.png" type="image/png">
     <style>
         :root {{
             color-scheme: dark;
-            --bg: #090a0f;
-            --panel: #11131c;
-            --panel-hover: #161a26;
-            --border: rgba(255, 255, 255, 0.05);
-            --border-hover: rgba(99, 102, 241, 0.4);
+            --bg: #000000;
+            --panel: #16171a;
+            --panel-hover: #1f2023;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(99, 102, 241, 0.45);
             --text: #f3f4f6;
             --text-muted: #9ca3af;
             --accent: #6366f1;
             --accent-hover: #4f46e5;
-            --accent-alpha: rgba(99, 102, 241, 0.1);
+            --accent-alpha: rgba(99, 102, 241, 0.15);
             --success: #10b981;
             --shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
             --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }}
+
+        body.light-theme {{
+            --bg: #f3f4f6;
+            --panel: #ffffff;
+            --panel-hover: #f9fafb;
+            --border: rgba(0, 0, 0, 0.08);
+            --border-hover: rgba(99, 102, 241, 0.3);
+            --text: #111827;
+            --text-muted: #6b7280;
+            --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+        }}
+        body.light-theme .header-container {{
+            background: rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme ::-webkit-scrollbar-thumb {{
+            background: #d1d5db;
+        }}
+        body.light-theme ::-webkit-scrollbar-thumb:hover {{
+            background: #9ca3af;
+        }}
+        body.light-theme .modal-close {{
+            background: rgba(0, 0, 0, 0.05);
+            border-color: rgba(0, 0, 0, 0.05);
+        }}
+        body.light-theme .modal-close:hover,
+        body.light-theme .modal-close:focus {{
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.35);
+            color: #ef4444;
+        }}
+        body.light-theme .modal-container {{
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+        }}
+        body.light-theme .btn-manage-link {{
+            background: rgba(99, 102, 241, 0.08);
+            border-color: rgba(99, 102, 241, 0.2);
+            color: #4f46e5;
+        }}
+        body.light-theme .btn-manage-link:hover {{
+            background: #4f46e5;
+            border-color: #4f46e5;
+            color: #ffffff;
+        }}
+        body.light-theme #sort,
+        body.light-theme #filter-base-model {{
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.08);
+            color: #111827;
+        }}
+        body.light-theme #sort:focus,
+        body.light-theme #filter-base-model:focus {{
+            background: #ffffff;
+            border-color: var(--accent);
+        }}
+        body.light-theme .divider {{
+            background: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .collection-chip {{
+            background: rgba(0, 0, 0, 0.02);
+            border-color: rgba(0, 0, 0, 0.08);
+            color: #111827;
+        }}
+        body.light-theme .collection-chip:hover {{
+            background: rgba(0, 0, 0, 0.05);
+        }}
+        body.light-theme .chip-clear {{
+            background: rgba(0, 0, 0, 0.05);
+            color: #6b7280;
+        }}
+        body.light-theme .chip-clear:hover {{
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }}
+        body.light-theme .collections-popup {{
+            background: rgba(255, 255, 255, 0.98);
+            border-color: rgba(0, 0, 0, 0.08);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }}
+        body.light-theme .popup-search-wrapper {{
+            background: rgba(0, 0, 0, 0.02);
+            border-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme #popup-search-input {{
+            color: #111827;
+        }}
+        body.light-theme .popup-footer {{
+            background: rgba(0, 0, 0, 0.02);
+            border-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .theme-toggle-btn {{
+            border-color: rgba(0, 0, 0, 0.1);
+        }}
+        body.light-theme .creator-badge {{
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            color: #1f2937;
+        }}
+        body.light-theme .creator-badge:hover {{
+            background: var(--accent);
+            color: #ffffff;
+            border-color: var(--accent);
+        }}
+        body.light-theme .creator-badge svg {{
+            color: #4b5563;
+        }}
+        body.light-theme .creator-badge:hover svg {{
+            color: #ffffff;
+        }}
+        body.light-theme .indicator-badge {{
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            color: #1f2937;
+        }}
+        body.light-theme .btn-copy, 
+        body.light-theme .btn-add-prompt {{
+            background: rgba(99, 102, 241, 0.08);
+            border-color: rgba(99, 102, 241, 0.2);
+            color: #4f46e5;
+        }}
+        body.light-theme .btn-copy:hover, 
+        body.light-theme .btn-copy:focus-visible,
+        body.light-theme .btn-add-prompt:hover, 
+        body.light-theme .btn-add-prompt:focus-visible {{
+            background: var(--accent);
+            color: #ffffff;
+            border-color: var(--accent);
+        }}
+        body.light-theme .btn-favorite {{
+            background: rgba(255, 255, 255, 0.75);
+            border-color: rgba(0, 0, 0, 0.08);
+            color: #6b7280;
+        }}
+        body.light-theme .btn-favorite:hover, 
+        body.light-theme .btn-favorite:focus {{
+            background: rgba(255, 255, 255, 0.95);
+            color: #d97706;
+            border-color: rgba(217, 119, 6, 0.3);
+        }}
+        body.light-theme .btn-favorite.active {{
+            color: #d97706;
+            background: rgba(251, 191, 36, 0.25);
+            border-color: rgba(217, 119, 6, 0.3);
+        }}
+        body.light-theme .modal-left-actions {{
+            background: #f9fafb;
+            border-top-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .btn-action-secondary {{
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.15);
+            color: #374151;
+        }}
+        body.light-theme .btn-action-secondary:hover {{
+            background: #f3f4f6;
+            border-color: rgba(0, 0, 0, 0.25);
+            color: #111827;
+        }}
+        body.light-theme .btn-action-civitai {{
+            background: #f1f5f9;
+            border-color: rgba(0, 0, 0, 0.08);
+            color: #475569;
+        }}
+        body.light-theme .btn-action-civitai:hover {{
+            background: #e2e8f0;
+            border-color: rgba(0, 0, 0, 0.15);
+            color: #1e293b;
+        }}
+        body.light-theme .modal-body.three-column .modal-middle #modal-section-description::after {{
+            background: linear-gradient(to bottom, transparent, #ffffff);
+        }}
+        body.light-theme .modal-preview-container {{
+            background: #f3f4f6;
+            border-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .modal-input-field,
+        body.light-theme .modal-section textarea,
+        body.light-theme .add-trigger-form input {{
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.15);
+            color: #111827;
+        }}
+        body.light-theme .modal-input-field:focus,
+        body.light-theme .modal-section textarea:focus,
+        body.light-theme .add-trigger-form input:focus {{
+            border-color: var(--accent);
+            background: #ffffff;
+        }}
+        body.light-theme .modal-section h3 {{
+            color: #4f46e5;
+        }}
+        body.light-theme .meta-row {{
+            background: #f3f4f6;
+            border-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .meta-row:hover {{
+            background: #e5e7eb;
+            border-color: rgba(0, 0, 0, 0.15);
+        }}
+        body.light-theme .prompt-builder {{
+            background: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.08);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 -5px 15px rgba(0, 0, 0, 0.04);
+        }}
+        body.light-theme .prompt-builder-header {{
+            border-bottom-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .prompt-builder-title {{
+            color: #4f46e5;
+        }}
+        body.light-theme .prompt-tokens {{
+            background: rgba(0, 0, 0, 0.02);
+            border-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .prompt-token {{
+            background: rgba(99, 102, 241, 0.08);
+            border-color: rgba(99, 102, 241, 0.2);
+            color: #4f46e5;
+        }}
+        body.light-theme .prompt-builder-divider {{
+            border-top-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .prompt-extras-title {{
+            color: #4f46e5;
+        }}
+        body.light-theme .prompt-extras-list {{
+            background: rgba(0, 0, 0, 0.02);
+            border-color: rgba(0, 0, 0, 0.08);
+        }}
+        body.light-theme .prompt-extras-list::-webkit-scrollbar-thumb {{
+            background: rgba(0, 0, 0, 0.1);
+        }}
+        body.light-theme .prompt-extras-list::-webkit-scrollbar-thumb:hover {{
+            background: rgba(0, 0, 0, 0.2);
+        }}
+        body.light-theme .preset-item, 
+        body.light-theme .history-item {{
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.08);
+            color: #1f2937;
+        }}
+        body.light-theme .preset-item:hover, 
+        body.light-theme .history-item:hover {{
+            background: rgba(99, 102, 241, 0.05) !important;
+            border-color: rgba(99, 102, 241, 0.2) !important;
+        }}
+
+        body.light-theme .hover-preview-card {{
+            background: rgba(255, 255, 255, 0.97);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }}
+        body.light-theme .hover-preview-title {{
+            border-bottom-color: rgba(0, 0, 0, 0.08);
+        }}
+
+        .theme-toggle-btn:hover {{
+            color: var(--text);
+            border-color: var(--border-hover);
+            background: var(--panel-hover);
         }}
 
         * {{
@@ -939,9 +1219,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             position: sticky;
             top: 0;
             z-index: 100;
-            background: rgba(9, 10, 15, 0.85);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            background: transparent;
             padding: 16px 32px;
         }}
 
@@ -950,8 +1228,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             margin: 0 auto;
             display: flex;
             align-items: center;
-            background: rgba(17, 19, 28, 0.45);
-            border: 1px solid var(--border);
+            background: rgba(22, 23, 26, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 12px;
             padding: 8px 16px;
             gap: 16px;
@@ -1498,27 +1778,21 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            margin-bottom: 12px;
-            height: 160px;
+            margin-bottom: 2px;
+            height: 180px;
             position: relative;
         }}
 
-        /* Fade-out gradient at the bottom of overflow trigger words */
-        .card-trigger-section::after {{
-            content: "";
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 40px;
-            background: linear-gradient(to bottom, transparent, var(--panel));
-            pointer-events: none;
+        .card .card-trigger-section + .label {{
+            margin-top: 2px;
         }}
+        
+        /* No ::after pseudo-element mask needed anymore - uses dynamic mask-image directly on the scrolling list container */
 
         /* Inside a card, trigger container scrolls — fade at bottom masks the scrollbar edge */
         .card .card-trigger-section .trigger-groups-container {{
             min-height: 0;
-            max-height: 160px;
+            flex: 1;
             overflow-y: auto;
             scrollbar-width: none; /* Firefox */
             margin-bottom: 0;
@@ -1630,6 +1904,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         .btn-delete-version svg {{
             width: 15px;
             height: 15px;
+        }}
+
+        #modal-btn-delete-version {{
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
         }}
 
 
@@ -1766,7 +2046,26 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             margin-bottom: 12px;
             max-height: 280px;
             overflow-y: auto;
-            padding-right: 4px;
+            padding: 2px 4px 10px 2px;
+            box-sizing: border-box;
+            -webkit-mask-image: none;
+            mask-image: none;
+            transition: mask-image 0.15s ease, -webkit-mask-image 0.15s ease;
+        }}
+
+        .trigger-groups-container.has-more-below {{
+            -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent 100%);
+        }}
+
+        .trigger-groups-container.has-more-above {{
+            -webkit-mask-image: linear-gradient(to top, black calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to top, black calc(100% - 24px), transparent 100%);
+        }}
+
+        .trigger-groups-container.has-more-above.has-more-below {{
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
         }}
 
         .trigger-group {{
@@ -1902,24 +2201,47 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         /* Prompt Builder Panel */
         .prompt-builder {{
             position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: calc(100% - 64px);
+            bottom: 24px;
+            right: 24px;
+            left: auto;
+            transform: none;
+            width: calc(100% - 48px);
             max-width: 800px;
             background: rgba(17, 19, 28, 0.9);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
-            border-bottom: none;
-            border-radius: 12px 12px 0 0;
-            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
             z-index: 1000;
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
         }}
 
         .prompt-builder.collapsed {{
-            transform: translate(-50%, calc(100% - 48px));
+            left: auto;
+            right: 24px;
+            bottom: 24px;
+            transform: none;
+            width: auto;
+            max-width: 240px;
+            height: 48px;
+            border-radius: 24px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        }}
+
+        .prompt-builder.collapsed .prompt-builder-header {{
+            border-bottom: none;
+            padding: 0 16px;
+            height: 100%;
+        }}
+
+        .prompt-builder.collapsed .prompt-builder-toggle-icon {{
+            display: none;
+        }}
+
+        .prompt-builder.collapsed .prompt-builder-content {{
+            display: none !important;
         }}
 
         .prompt-builder-header {{
@@ -1970,6 +2292,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         .prompt-builder-toggle-icon {{
+            display: inline-block;
             font-size: 12px;
             color: var(--text-muted);
             transition: transform 0.3s ease;
@@ -1989,6 +2312,31 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             flex-direction: column;
             gap: 16px;
+        }}
+
+        .prompt-builder-divider {{
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            margin: 12px 0;
+        }}
+
+        .prompt-extras-title {{
+            font-size: 11px;
+            font-weight: 700;
+            color: #818cf8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        .prompt-extras-list {{
+            flex: 1;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
         }}
 
         .prompt-tokens {{
@@ -2112,6 +2460,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             background: rgba(30, 41, 59, 0.8);
             border-color: rgba(255, 255, 255, 0.2);
             color: white;
+        }}
+
+        .civitai-red-text {{
+            color: #ef4444;
+            font-weight: 700;
         }}
 
         /* Hover Preview Tooltip */
@@ -2380,8 +2733,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         .modal-close:hover, .modal-close:focus {{
-            background: rgba(239, 68, 68, 0.1);
-            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.35);
             color: #ef4444;
         }}
 
@@ -2741,9 +3094,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             font-family: monospace;
         }}
 
-        /* In 3-column layout the description section grows to fill leftover space */
+        /* In 3-column layout the trigger section fills remaining space; description sits flush at bottom */
         .modal-body.three-column .modal-middle #modal-section-description {{
-            flex: 1;
+            flex: 0 0 auto;
             min-height: 0;
             display: flex;
             flex-direction: column;
@@ -2798,6 +3151,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             outline: none;
             transition: var(--transition);
             box-sizing: border-box;
+        }}
+
+        /* Category / Sub-Category: show pointer (hand) cursor, not text I-beam */
+        .custom-dropdown-wrapper,
+        #modal-input-parent-collection,
+        #modal-input-sub-collection {{
+            cursor: pointer;
         }}
 
         .modal-input-field:focus {{
@@ -3060,7 +3420,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 12px;
             overflow-y: auto;
             padding: 24px;
             background: rgba(0, 0, 0, 0.05);
@@ -3272,14 +3632,19 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
     </style>
 </head>
 <body>
+    <script>
+        (function() {{
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            if (savedTheme === 'light') {{
+                document.body.classList.add('light-theme');
+            }}
+        }})();
+    </script>
     <header>
         <div class="header-container">
-            <div class="header-left">
-                <h1>LoRA Library</h1>
-                <a href="/manage" class="btn-manage-link">
-                    <span>🎛️</span>
-                    <span>Manager</span>
-                </a>
+            <div class="header-left" style="display: flex; align-items: center; gap: 12px;">
+                <img src="/logo.png" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover;" alt="logo">
+                <h1 style="margin: 0; line-height: 1;">LoRA Library</h1>
                 <div class="divider"></div>
                 <div class="weight-control">
                     <span class="weight-label">Weight</span>
@@ -3346,6 +3711,16 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 </div>
                 <div class="divider"></div>
                 <span id="count" class="count"></span>
+                <div class="divider"></div>
+                <a href="/manage" class="btn-manage-link">
+                    <span>🎛️</span>
+                    <span>Manager</span>
+                </a>
+                <div class="divider"></div>
+                <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); transition: var(--transition);">
+                    <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                </button>
             </div>
         </div>
     </header>
@@ -3381,7 +3756,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
     <!-- Details Modal -->
     <div id="details-modal" class="modal-overlay" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
         <div class="modal-container">
-            <button class="modal-close" aria-label="Close modal">
+            <button class="modal-close" id="details-modal-close" aria-label="Close modal">
                 <svg class="close-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -3404,7 +3779,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                                         <polyline points="6 9 12 15 18 9"/>
                                     </svg>
                                 </div>
-                                <button id="modal-btn-delete-version" class="btn-delete-version" aria-label="Delete this version" type="button" tabindex="0" style="flex-shrink: 0; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #f87171; padding: 10px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; height: 38px; width: 38px; box-sizing: border-box; transition: var(--transition);">
+                                <button id="modal-btn-delete-version" class="btn-delete-version" aria-label="Delete this version" type="button" tabindex="0">
                                     <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;">
                                         <polyline points="3 6 5 6 21 6"/>
                                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -3463,7 +3838,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     <div class="modal-left-actions">
                         <button id="modal-btn-copy-tag" class="btn-action-primary">Copy Tag</button>
                         <button id="modal-btn-add-prompt" class="btn-action-secondary">Add to Prompt</button>
-                        <a id="modal-btn-civitai" class="btn-action-civitai" target="_blank" rel="noopener noreferrer">View on CivitAI</a>
+                        <a id="modal-btn-civitai" class="btn-action-civitai" target="_blank" rel="noopener noreferrer">View on <span class="civitai-red-text">CivitAI</span></a>
                     </div>
                 </div>
 
@@ -3564,13 +3939,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     </div>
                     
                     <!-- Triggers stacked vertically (No two column layout) -->
-                    <div class="modal-section" style="display: flex; flex-direction: column; gap: 16px;">
-                        <div>
+                    <div class="modal-section" style="display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; overflow: hidden;">
+                        <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
                             <h3 id="modal-official-triggers-title">Official Triggers</h3>
                             <div id="modal-trigger-search-container" style="display: none; margin-top: 8px; margin-bottom: 4px;">
                                 <input type="text" id="modal-trigger-search" placeholder="🔍 Search triggers..." style="width: 100%; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--text); outline: none;">
                             </div>
-                            <div id="modal-official-triggers" class="trigger-groups-container" style="max-height: 280px; border: none; background: transparent; padding: 0; margin-top: 8px;"></div>
+                            <div id="modal-official-triggers" class="trigger-groups-container" style="flex: 1; min-height: 0; border: none; background: transparent; margin-top: 8px;"></div>
                         </div>
                         <div>
                             <div class="trigger-group" id="personal-trigger-group">
@@ -3655,17 +4030,17 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 </div>
                 
                 <!-- Divider -->
-                <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 12px 0;"></div>
+                <div class="prompt-builder-divider"></div>
                 
                 <!-- History & Presets Panel -->
                 <div class="prompt-extras-container" style="display: flex; gap: 16px; min-height: 120px; max-height: 200px;">
                     <!-- Presets Column -->
                     <div class="prompt-extras-column" style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <span style="font-size: 11px; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 0.05em;">Prompt Presets</span>
+                            <span class="prompt-extras-title">Prompt Presets</span>
                             <button id="btn-save-preset" class="btn-mini" type="button" style="padding: 2px 8px; font-size: 10px; height: auto; line-height: normal;">+ Save Current</button>
                         </div>
-                        <div id="prompt-presets-list" class="prompt-extras-list" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+                        <div id="prompt-presets-list" class="prompt-extras-list">
                             <!-- populated dynamically -->
                         </div>
                     </div>
@@ -3673,9 +4048,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     <!-- History Column -->
                     <div class="prompt-extras-column" style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
                         <div style="margin-bottom: 6px;">
-                            <span style="font-size: 11px; font-weight: 700; color: #818cf8; text-transform: uppercase; letter-spacing: 0.05em;">Prompt History</span>
+                            <span class="prompt-extras-title">Prompt History</span>
                         </div>
-                        <div id="prompt-history-list" class="prompt-extras-list" style="flex: 1; overflow-y: auto; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+                        <div id="prompt-history-list" class="prompt-extras-list">
                             <!-- populated dynamically -->
                         </div>
                     </div>
@@ -3816,6 +4191,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
             count.textContent = `${{visible}} / ${{cards.length}}`;
             empty.style.display = visible === 0 ? "block" : "none";
+            
+            // Re-evaluate overflow for newly unhidden cards
+            markOverflowingDescriptions();
+            markOverflowingTriggers();
         }}
 
         function performSort() {{
@@ -3985,6 +4364,11 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             if (wrapper) {{
                 const d = wrapper.querySelector(".description");
                 wrapper.classList.toggle("overflowing", d && d.scrollHeight > wrapper.clientHeight + 2);
+            }}
+            
+            // Re-evaluate scroll mask on card triggers
+            if (triggerContainer) {{
+                updateScrollMask(triggerContainer);
             }}
             
             // Dynamic base models dropdown and active filters updates on version changes
@@ -4747,6 +5131,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                             searchContainer.style.display = "none";
                         }}
                     }}
+                    
+                    updateScrollMask(offTrigContainer);
                 }}
             }}
 
@@ -5401,7 +5787,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         const stars = document.querySelectorAll("#modal-rating span");
         stars.forEach(star => {{
             star.addEventListener("click", () => {{
-                currentRating = parseInt(star.dataset.val);
+                const val = parseInt(star.dataset.val);
+                // Click same star again to clear; otherwise set new rating
+                currentRating = (currentRating === val) ? 0 : val;
                 renderRating(currentRating);
                 autoSaveUserData();
             }});
@@ -5461,6 +5849,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             
             const isExpanded = group.classList.toggle("expanded");
             header.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+            
+            // Re-evaluate scroll mask on modal official triggers
+            const container = document.getElementById("modal-official-triggers");
+            if (container) {{
+                updateScrollMask(container);
+            }}
         }});
 
         modalEl.addEventListener("keydown", (e) => {{
@@ -5474,6 +5868,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 
                 const isExpanded = group.classList.toggle("expanded");
                 header.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+                
+                // Re-evaluate scroll mask on modal official triggers
+                const container = document.getElementById("modal-official-triggers");
+                if (container) {{
+                    updateScrollMask(container);
+                }}
             }}
         }});
 
@@ -6324,7 +6724,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         // Modal Close Button click listener
-        document.querySelector(".modal-close").addEventListener("click", closeDetailsModal);
+        document.getElementById("details-modal-close").addEventListener("click", closeDetailsModal);
 
         // Image load listener for layout adjustment
         const imgEl = document.getElementById("modal-image");
@@ -6436,6 +6836,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         noMatchMessage.remove();
                     }}
                 }}
+                
+                // Re-evaluate scroll mask on modal official triggers
+                updateScrollMask(container);
             }});
         }}
         
@@ -6569,6 +6972,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                                 searchContainer.style.display = "none";
                             }}
                         }}
+                        
+                        updateScrollMask(offTrigContainer);
                     }}
 
                     // Update metadata
@@ -6994,21 +7399,79 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }});
 
         setWeight(currentWeight);
+
+        // Bind weight buttons click events
+        document.querySelectorAll(".btn-weight").forEach(btn => {{
+            btn.addEventListener("click", () => {{
+                setWeight(btn.dataset.weight);
+            }});
+        }});
+
         performSort();
         updateBaseModelFilterOptions();
         updateFilter();
         updatePromptBuilderUI();
-        setupAutoHideScrollbars();
         loadUserDataSummary();
 
-        // Mark description wrappers that actually overflow so the fade gradient shows
+        // Bind Theme Toggle Button Click
+        const themeToggle = document.getElementById('theme-toggle');
+        if (themeToggle) {{
+            const sunIcon = themeToggle.querySelector('.sun-icon');
+            const moonIcon = themeToggle.querySelector('.moon-icon');
+            
+            const updateIcons = (theme) => {{
+                if (theme === 'light') {{
+                    sunIcon.style.display = 'none';
+                    moonIcon.style.display = 'block';
+                }} else {{
+                    sunIcon.style.display = 'block';
+                    moonIcon.style.display = 'none';
+                }}
+            }};
+            
+            updateIcons(document.body.classList.contains('light-theme') ? 'light' : 'dark');
+            
+            themeToggle.addEventListener('click', () => {{
+                const isLight = document.body.classList.toggle('light-theme');
+                const newTheme = isLight ? 'light' : 'dark';
+                localStorage.setItem('theme', newTheme);
+                updateIcons(newTheme);
+            }});
+        }}
+
+        // Mark description wrappers that actually overflow so the fade gradient shows (only for visible cards)
         function markOverflowingDescriptions() {{
-            document.querySelectorAll(".description-wrapper").forEach(wrapper => {{
+            document.querySelectorAll(".card").forEach(card => {{
+                if (card.hidden) return;
+                const wrapper = card.querySelector(".description-wrapper");
+                if (!wrapper) return;
                 const desc = wrapper.querySelector(".description");
                 if (!desc) return;
                 // Compare natural text height against the wrapper's current allocated height
                 const overflows = desc.scrollHeight > wrapper.clientHeight + 2;
                 wrapper.classList.toggle("overflowing", overflows);
+            }});
+        }}
+
+        // Mark trigger sections that actually overflow so the fade gradient shows (only for visible cards)
+        function markOverflowingTriggers() {{
+            document.querySelectorAll(".card").forEach(card => {{
+                if (card.hidden) return;
+                const container = card.querySelector(".trigger-groups-container");
+                if (!container) return;
+                updateScrollMask(container);
+            }});
+        }}
+
+        // Dynamic scroll mask logic for collapsible trigger lists (fades top/bottom based on scroll position)
+        function updateScrollMask(container) {{
+            if (!container) return;
+            requestAnimationFrame(() => {{
+                const hasMoreAbove = container.scrollTop > 4;
+                const hasMoreBelow = container.scrollHeight - container.scrollTop > container.clientHeight + 4;
+                
+                container.classList.toggle("has-more-above", hasMoreAbove);
+                container.classList.toggle("has-more-below", hasMoreBelow);
             }});
         }}
 
@@ -7164,8 +7627,28 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             hideHoverPreview();
         }}, {{ passive: true }});
 
+        let resizeTimeout;
+        window.addEventListener("resize", () => {{
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {{
+                markOverflowingDescriptions();
+                markOverflowingTriggers();
+            }}, 150);
+        }});
+
+        // Capturing scroll event listener for all scrollable trigger list containers (cards and details modal)
+        document.addEventListener("scroll", (e) => {{
+            const target = e.target;
+            if (target && target.classList && target.classList.contains("trigger-groups-container")) {{
+                updateScrollMask(target);
+            }}
+        }}, {{ capture: true, passive: true }});
+
         // Run once on load (after layout settles)
-        requestAnimationFrame(() => requestAnimationFrame(markOverflowingDescriptions));
+        requestAnimationFrame(() => requestAnimationFrame(() => {{
+            markOverflowingDescriptions();
+            markOverflowingTriggers();
+        }}));
     </script>
     
     <div id="hover-preview-card" class="hover-preview-card" style="display: none; position: absolute; pointer-events: none; z-index: 10000;">

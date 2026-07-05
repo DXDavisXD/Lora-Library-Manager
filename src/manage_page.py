@@ -72,20 +72,21 @@ def build_manage_page(lora_root: Path) -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LoRA Library Manager — Control Center</title>
+<title>LoRA Manager</title>
+<link rel="icon" href="/favicon.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {{
-    --bg: #090a0f;
-    --panel: #11131c;
-    --panel-header-bg: #151824;
-    --panel-body-bg: #11131c;
-    --border: rgba(255, 255, 255, 0.05);
-    --border-hover: rgba(99, 102, 241, 0.35);
+    --bg: #000000;
+    --panel: #16171a;
+    --panel-header-bg: #1f2023;
+    --panel-body-bg: #16171a;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(99, 102, 241, 0.45);
     --accent: #6366f1;
     --accent-hover: #4f46e5;
-    --accent-alpha: rgba(99, 102, 241, 0.1);
+    --accent-alpha: rgba(99, 102, 241, 0.15);
     --text: #f3f4f6;
     --text-muted: #9ca3af;
     --success: #10b981;
@@ -96,16 +97,86 @@ def build_manage_page(lora_root: Path) -> str:
     --transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
   }}
 
+  body.light-theme {{
+    --bg: #f3f4f6;
+    --panel: #ffffff;
+    --panel-header-bg: #f9fafb;
+    --panel-body-bg: #ffffff;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-hover: rgba(99, 102, 241, 0.3);
+    --text: #111827;
+    --text-muted: #6b7280;
+    --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+  }}
+  body.light-theme .topbar-container {{
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }}
+  body.light-theme .nav-btn {{
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.2);
+    color: #4f46e5;
+  }}
+  body.light-theme .nav-btn:hover {{
+    background: #4f46e5;
+    border-color: #4f46e5;
+    color: #ffffff;
+  }}
+  body.light-theme .form-input,
+  body.light-theme .form-select,
+  body.light-theme .setting-input,
+  body.light-theme .toggle-track {{
+    background: #f9fafb;
+    border-color: rgba(0, 0, 0, 0.1);
+    color: #111827;
+  }}
+  body.light-theme .toggle-track::after {{
+    background: #9ca3af;
+  }}
+  body.light-theme .toggle-switch input:checked + .toggle-track::after {{
+    background: #ffffff;
+  }}
+  body.light-theme .priority-badge.normal {{
+    color: #4f46e5;
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.2);
+  }}
+  body.light-theme .terminal-box {{
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+    color: #1f2937;
+  }}
+  body.light-theme .terminal-box .ok {{
+    color: #059669;
+  }}
+  body.light-theme .terminal-box .warn {{
+    color: #d97706;
+  }}
+  body.light-theme .terminal-box .err {{
+    color: #dc2626;
+  }}
+  body.light-theme .terminal-box .head {{
+    color: #4f46e5;
+  }}
+  body.light-theme .theme-toggle-btn {{
+    border-color: rgba(0, 0, 0, 0.1);
+  }}
+  .theme-toggle-btn:hover {{
+    color: var(--text);
+    border-color: var(--border-hover);
+    background: var(--panel-header-bg);
+  }}
+
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
   body {{
     font-family: 'Inter', sans-serif;
     background: var(--bg);
     color: var(--text);
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow-x: hidden;
+    overflow: hidden;
   }}
 
   ::-webkit-scrollbar {{
@@ -125,17 +196,25 @@ def build_manage_page(lora_root: Path) -> str:
 
   /* ── Top bar ── */
   .topbar {{
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 32px;
-    background: rgba(17, 19, 28, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     z-index: 100;
+    background: transparent;
+    padding: 16px 32px;
+  }}
+  .topbar-container {{
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    background: rgba(22, 23, 26, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 8px 16px;
+    gap: 16px;
+    width: 100%;
   }}
   .topbar-logo {{
     font-size: 18px;
@@ -152,24 +231,25 @@ def build_manage_page(lora_root: Path) -> str:
   }}
   .topbar-sep {{ flex: 1; }}
   .nav-btn {{
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 7px 16px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.02);
-    color: var(--text-muted);
+    justify-content: center;
+    background: rgba(99, 102, 241, 0.1);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    color: #a5b4fc;
+    padding: 6px 12px;
+    border-radius: 6px;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
-    text-decoration: none;
+    gap: 6px;
   }}
   .nav-btn:hover {{
-    border-color: var(--border-hover);
-    color: var(--text);
-    background: var(--accent-alpha);
+    background: rgba(99, 102, 241, 0.25);
+    border-color: var(--accent);
+    color: #fff;
   }}
 
   /* ── Main layout ── */
@@ -177,11 +257,14 @@ def build_manage_page(lora_root: Path) -> str:
     max-width: 1400px;
     width: 100%;
     margin: 0 auto;
-    padding: 32px;
+    padding: 24px 32px;
     display: flex;
     flex-direction: column;
-    gap: 28px;
+    gap: 20px;
     flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
   }}
 
   .header-area {{
@@ -190,7 +273,7 @@ def build_manage_page(lora_root: Path) -> str:
     justify-content: space-between;
   }}
   .page-title {{
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 800;
     color: var(--text);
     letter-spacing: -0.5px;
@@ -198,7 +281,7 @@ def build_manage_page(lora_root: Path) -> str:
   .page-title span {{
     color: var(--text-muted);
     font-weight: 400;
-    font-size: 18px;
+    font-size: 15px;
   }}
 
   /* ── Stats grid ── */
@@ -206,12 +289,13 @@ def build_manage_page(lora_root: Path) -> str:
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 16px;
+    flex-shrink: 0;
   }}
   .stat-card {{
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -227,7 +311,7 @@ def build_manage_page(lora_root: Path) -> str:
     color: var(--text-muted);
   }}
   .stat-value {{
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 700;
     color: var(--text);
     line-height: 1;
@@ -239,8 +323,10 @@ def build_manage_page(lora_root: Path) -> str:
   .content-grid {{
     display: grid;
     grid-template-columns: 360px 1fr;
-    gap: 28px;
-    align-items: start;
+    gap: 24px;
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
   }}
 
   /* ── Left Column Panels ── */
@@ -248,6 +334,31 @@ def build_manage_page(lora_root: Path) -> str:
     display: flex;
     flex-direction: column;
     gap: 24px;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 8px;
+  }}
+
+  .left-col .panel {{
+    flex-shrink: 0;
+  }}
+
+  .warn {{ color: var(--warning) !important; }}
+  .ok {{ color: var(--success) !important; }}
+
+  .btn-clear {{
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: var(--transition);
+  }}
+  .btn-clear:hover {{
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text);
+    border-color: var(--border-hover);
   }}
 
   .panel {{
@@ -258,6 +369,7 @@ def build_manage_page(lora_root: Path) -> str:
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
   }}
   .panel-header {{
     padding: 14px 20px;
@@ -273,7 +385,7 @@ def build_manage_page(lora_root: Path) -> str:
     justify-content: space-between;
   }}
   .panel-body {{
-    padding: 18px;
+    padding: 18px 18px 24px 18px;
     background: var(--panel-body-bg);
     display: flex;
     flex-direction: column;
@@ -335,6 +447,7 @@ def build_manage_page(lora_root: Path) -> str:
   }}
   .form-input {{
     flex: 1;
+    min-width: 0;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -348,6 +461,7 @@ def build_manage_page(lora_root: Path) -> str:
   .form-input:focus {{ border-color: var(--accent); }}
   .form-select {{
     background: rgba(0, 0, 0, 0.2);
+    min-width: 0;
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text);
@@ -373,12 +487,36 @@ def build_manage_page(lora_root: Path) -> str:
   }}
   .btn-mini:hover {{ background: var(--accent-hover); }}
 
+  .btn-secondary-outline {{
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+  }}
+  .btn-secondary-outline:hover {{
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-hover);
+  }}
+  body.light-theme .btn-secondary-outline {{
+    background: rgba(0, 0, 0, 0.02);
+  }}
+  body.light-theme .btn-secondary-outline:hover {{
+    background: rgba(0, 0, 0, 0.06);
+  }}
+
   /* Settings panel styles */
   .settings-form {{ display: flex; flex-direction: column; gap: 14px; }}
   .setting-row {{ display: flex; flex-direction: column; gap: 5px; }}
   .setting-label {{ font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }}
   .setting-input {{
     background: rgba(0, 0, 0, 0.2);
+    min-width: 0;
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text);
@@ -443,12 +581,10 @@ def build_manage_page(lora_root: Path) -> str:
   .right-col {{
     display: flex;
     flex-direction: column;
-    gap: 28px;
-    position: sticky;
-    top: 88px;
-    max-height: calc(100vh - 120px);
-    overflow-y: auto;
-    padding-right: 4px;
+    gap: 24px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }}
 
   /* Active queue card */
@@ -549,7 +685,8 @@ def build_manage_page(lora_root: Path) -> str:
 
   /* Terminals */
   .terminal-box {{
-    height: 280px;
+    flex: 1;
+    min-height: 180px;
     background: #06070a;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -560,6 +697,10 @@ def build_manage_page(lora_root: Path) -> str:
     overflow-y: auto;
     white-space: pre-wrap;
     color: #94a3b8;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start;
   }}
   .terminal-box span {{ display: block; }}
   .terminal-box .err {{ color: var(--danger); }}
@@ -686,22 +827,39 @@ def build_manage_page(lora_root: Path) -> str:
 </style>
 </head>
 <body>
+<script>
+  (function() {{
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    if (savedTheme === 'light') {{
+      document.body.classList.add('light-theme');
+    }}
+  }})();
+</script>
 
 <div class="topbar">
-  <div class="topbar-logo">LoRA<span>Manager</span></div>
-  <div class="topbar-sub">Control Center</div>
-  <div class="topbar-sep"></div>
-  <a class="nav-btn" href="/">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-    🖼️ Browse Gallery
-  </a>
+  <div class="topbar-container">
+    <div class="topbar-logo" style="display: flex; align-items: center; gap: 8px;">
+      <img src="/logo.png" style="width: 24px; height: 24px; border-radius: 6px; object-fit: cover;" alt="logo">
+      LoRA<span>Manager</span>
+    </div>
+    <div class="topbar-sub">Control Center</div>
+    <div class="topbar-sep"></div>
+    <a class="nav-btn" href="/">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      🖼️ Browse Gallery
+    </a>
+    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme" style="margin-left: auto; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); transition: var(--transition);">
+      <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
 </div>
 
 <main>
   <div class="header-area">
     <div class="page-title">Library Manager <span>/ Workspace Control</span></div>
   </div>
-
+  
   <!-- Stats Grid -->
   <div class="stats-grid">
     <div class="stat-card">
@@ -725,7 +883,7 @@ def build_manage_page(lora_root: Path) -> str:
       <div class="stat-value" style="font-size:22px" id="stat-size">{stats['size']}</div>
     </div>
   </div>
-
+  
   <!-- Content Grid -->
   <div class="content-grid">
 
@@ -789,6 +947,7 @@ def build_manage_page(lora_root: Path) -> str:
             <div class="section-title">Process Single Model</div>
             <div class="form-row">
               <input type="text" id="manual-file-path" class="form-input" placeholder="E:\\Path\\to\\model.safetensors">
+              <button class="btn-secondary-outline" onclick="browseSingleFile()" type="button">Browse...</button>
               <button class="btn-mini" onclick="processSingleFile()">Run</button>
             </div>
           </div>
@@ -796,6 +955,7 @@ def build_manage_page(lora_root: Path) -> str:
             <div class="section-title">Process Custom Folder</div>
             <div class="form-row">
               <input type="text" id="manual-folder-path" class="form-input" placeholder="Subfolder path (relative or absolute)">
+              <button class="btn-secondary-outline" onclick="browseCustomFolder()" type="button">Browse...</button>
               <button class="btn-mini" onclick="processFolder()">Run</button>
             </div>
           </div>
@@ -881,7 +1041,14 @@ def build_manage_page(lora_root: Path) -> str:
               <select id="backup-select" class="form-select">
                 <option value="">No backups found</option>
               </select>
-              <button class="btn-mini" onclick="restoreSelectedBackup()" style="align-self:flex-end">Restore selected</button>
+              
+              <!-- Custom File Selection -->
+              <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                <input type="text" id="manual-backup-file-path" class="form-input" placeholder="Or select a custom backup JSON file..." style="flex: 1;">
+                <button class="btn-secondary-outline" onclick="browseBackupFile()" type="button" style="padding: 8px 12px;">Browse...</button>
+              </div>
+
+              <button class="btn-mini" onclick="restoreSelectedBackup()" style="align-self:flex-end; margin-top: 4px;">Restore selected</button>
             </div>
           </div>
         </div>
@@ -894,7 +1061,10 @@ def build_manage_page(lora_root: Path) -> str:
           <div class="settings-form">
             <div class="setting-row">
               <div class="setting-label">LoRA Root Path</div>
-              <input type="text" class="setting-input" id="lora-root-input" placeholder="E:\\SD\\models\\Lora">
+              <div style="display: flex; gap: 8px; width: 100%;">
+                <input type="text" class="setting-input" id="lora-root-input" placeholder="E:\\SD\\models\\Lora" style="flex: 1;">
+                <button class="btn-secondary-outline" onclick="browseLoraRoot()" type="button">Browse...</button>
+              </div>
             </div>
             <div class="setting-row">
               <div class="setting-label">CivitAI API Key</div>
@@ -991,23 +1161,23 @@ def build_manage_page(lora_root: Path) -> str:
       </div>
 
       <!-- Live Terminal logs -->
-      <div class="panel">
+      <div class="panel" style="flex: 1; min-height: 250px; display: flex; flex-direction: column;">
         <div class="panel-header">
           Console Output
           <button class="btn-clear" onclick="clearLog()" style="margin-left:auto; padding:2px 8px; font-size:11px;">Clear</button>
         </div>
-        <div class="panel-body" style="padding:0;">
-          <div id="terminal" class="terminal-box">
+        <div class="panel-body" style="padding:0; flex: 1; min-height: 0; display: flex; flex-direction: column;">
+          <div id="terminal" class="terminal-box" style="flex: 1; height: 100%; border: none; border-radius: 0;">
             <span class="head">Ready. Trigger an operation to start logging.</span>
           </div>
         </div>
       </div>
 
       <!-- Recent activity feed -->
-      <div class="panel">
+      <div class="panel" style="max-height: 200px; display: flex; flex-direction: column; flex-shrink: 0;">
         <div class="panel-header">Recent Activity Log</div>
-        <div class="panel-body">
-          <div id="activity-feed" class="activity-feed">
+        <div class="panel-body" style="overflow-y: auto; flex: 1; min-height: 0; padding: 12px 18px;">
+          <div id="activity-feed" class="activity-feed" style="max-height: none;">
             <div style="text-align:center; padding: 24px; color:var(--text-muted); font-size:13px; font-style:italic;">No historical records loaded</div>
           </div>
         </div>
@@ -1139,6 +1309,11 @@ def build_manage_page(lora_root: Path) -> str:
   }}
 
   function restoreSelectedBackup() {{
+    const manualFile = document.getElementById('manual-backup-file-path').value.trim();
+    if (manualFile) {{
+      triggerTask('import-manifest', {{ manifest_path: manualFile }});
+      return;
+    }}
     const backupSelect = document.getElementById('backup-select');
     const val = backupSelect.value;
     if (!val) {{
@@ -1146,6 +1321,55 @@ def build_manage_page(lora_root: Path) -> str:
       return;
     }}
     triggerTask('import-manifest', {{ manifest_path: `backup/${{val}}` }});
+  }}
+
+  async function selectPath(type) {{
+    let apiEndpoint = '/api/select_folder';
+    if (type === 'model') {{
+      apiEndpoint = '/api/select_model_file';
+    }} else if (type === 'backup') {{
+      apiEndpoint = '/api/select_backup_file';
+    }}
+    try {{
+      const response = await fetch(apiEndpoint, {{ method: 'POST' }});
+      if (!response.ok) {{
+        throw new Error(`HTTP error! status: ${{response.status}}`);
+      }}
+      const data = await response.json();
+      return data.path || "";
+    }} catch (err) {{
+      console.error("Error selecting path:", err);
+      toast("Failed to open explorer window: " + err.message, "error");
+      return "";
+    }}
+  }}
+
+  async function browseSingleFile() {{
+    const path = await selectPath('model');
+    if (path) {{
+      document.getElementById('manual-file-path').value = path;
+    }}
+  }}
+
+  async function browseCustomFolder() {{
+    const path = await selectPath('folder');
+    if (path) {{
+      document.getElementById('manual-folder-path').value = path;
+    }}
+  }}
+
+  async function browseLoraRoot() {{
+    const path = await selectPath('folder');
+    if (path) {{
+      document.getElementById('lora-root-input').value = path;
+    }}
+  }}
+
+  async function browseBackupFile() {{
+    const path = await selectPath('backup');
+    if (path) {{
+      document.getElementById('manual-backup-file-path').value = path;
+    }}
   }}
 
   // ── Log Streaming (SSE) ─────────────────────────────────────────────────────
@@ -1382,13 +1606,13 @@ def build_manage_page(lora_root: Path) -> str:
         const previewEl = document.getElementById('stat-previews');
         if (previewEl) {{
           previewEl.textContent = s.missing_preview;
-          previewEl.className = `stat-value ${{s.missing_preview > 0 ? 'warn' : 'ok'}}`;
+          previewEl.className = `${{s.missing_preview > 0 ? 'warn' : 'ok'}}`;
         }}
         
         const metaEl = document.getElementById('stat-metadata');
         if (metaEl) {{
           metaEl.textContent = s.missing_metadata;
-          metaEl.className = `stat-value ${{s.missing_metadata > 0 ? 'warn' : 'ok'}}`;
+          metaEl.className = `${{s.missing_metadata > 0 ? 'warn' : 'ok'}}`;
         }}
         
         setVal('stat-collections', s.collections);
@@ -1405,6 +1629,32 @@ def build_manage_page(lora_root: Path) -> str:
     
     // Poll queue status every 1.5 seconds
     pollInterval = setInterval(refreshTasks, 1500);
+
+    // Bind Theme Toggle Button Click
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {{
+      const sunIcon = themeToggle.querySelector('.sun-icon');
+      const moonIcon = themeToggle.querySelector('.moon-icon');
+      
+      const updateIcons = (theme) => {{
+        if (theme === 'light') {{
+          sunIcon.style.display = 'none';
+          moonIcon.style.display = 'block';
+        }} else {{
+          sunIcon.style.display = 'block';
+          moonIcon.style.display = 'none';
+        }}
+      }};
+      
+      updateIcons(document.body.classList.contains('light-theme') ? 'light' : 'dark');
+      
+      themeToggle.addEventListener('click', () => {{
+        const isLight = document.body.classList.toggle('light-theme');
+        const newTheme = isLight ? 'light' : 'dark';
+        localStorage.setItem('theme', newTheme);
+        updateIcons(newTheme);
+      }});
+    }}
   }});
 </script>
 </body>

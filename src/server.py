@@ -65,6 +65,23 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             self.path = "/gallery.html"
             super().do_GET()
+        elif path in ("/favicon.png", "/favicon.ico", "/logo.png"):
+            # Serve the logo from the project root directory
+            logo_path = Path(__file__).parent.parent / "logo.png"
+            if logo_path.exists():
+                self.send_response(200)
+                if path.endswith(".ico"):
+                    self.send_header("Content-Type", "image/x-icon")
+                else:
+                    self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(logo_path.stat().st_size))
+                self.end_headers()
+                with open(logo_path, "rb") as f:
+                    self.wfile.write(f.read())
+                return
+            else:
+                self.send_error(404, "File not found")
+                return
         elif path == "/api/user_data_summary":
             self.handle_get_summary()
         elif path == "/api/get_user_data":
@@ -119,6 +136,12 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_run_task(action, query)
         elif path == "/api/settings":
             self.handle_post_settings()
+        elif path == "/api/select_folder":
+            self.handle_select_folder()
+        elif path == "/api/select_model_file":
+            self.handle_select_model_file()
+        elif path == "/api/select_backup_file":
+            self.handle_select_backup_file()
         else:
             self.send_error_response(404, "Not Found")
 
@@ -795,6 +818,9 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def handle_manage_page(self):
         """Serve the /manage dashboard HTML page."""
         try:
+            import importlib
+            import manage_page
+            importlib.reload(manage_page)
             from manage_page import build_manage_page
             html = build_manage_page(self.lora_root).encode("utf-8")
             self.send_response(200)
@@ -808,6 +834,9 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def handle_get_stats(self):
         """Return quick library stats as JSON."""
         try:
+            import importlib
+            import manage_page
+            importlib.reload(manage_page)
             from manage_page import get_library_stats
             stats = get_library_stats(self.lora_root)
             self.send_success_response(stats)
@@ -994,6 +1023,60 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass   # Client disconnected — just stop
 
+    def handle_select_folder(self):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            
+            folder = filedialog.askdirectory(title="Select Folder")
+            root.destroy()
+            
+            self.send_success_response({"path": folder if folder else ""})
+        except Exception as e:
+            self.send_error_response(500, f"Error opening folder selector: {str(e)}")
+
+    def handle_select_model_file(self):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            
+            file_path = filedialog.askopenfilename(
+                title="Select Safetensors Model File",
+                filetypes=[("Safetensors files", "*.safetensors"), ("All files", "*.*")]
+            )
+            root.destroy()
+            
+            self.send_success_response({"path": file_path if file_path else ""})
+        except Exception as e:
+            self.send_error_response(500, f"Error opening file selector: {str(e)}")
+
+    def handle_select_backup_file(self):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            
+            file_path = filedialog.askopenfilename(
+                title="Select Backup JSON File",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            root.destroy()
+            
+            self.send_success_response({"path": file_path if file_path else ""})
+        except Exception as e:
+            self.send_error_response(500, f"Error opening file selector: {str(e)}")
+
     # ── Shared helpers ────────────────────────────────────────────────────────
 
     def send_success_response(self, response_data):
@@ -1036,18 +1119,23 @@ def start_server(lora_root: Path, port: int = 8000) -> None:
     actual_port = port
     
     # Try finding an open port starting from 8000
-    for p in range(port, port + 20):
+    for p in range(port, port + 50):
         try:
-            # Bind to localhost specifically
-            server = socketserver.ThreadingTCPServer(("127.0.0.1", p), handler)
+            # Bind to all interfaces (empty string) for maximum compatibility on Windows
+            server = socketserver.ThreadingTCPServer(("", p), handler)
             actual_port = p
             break
         except OSError:
             continue
             
     if not server:
-        print("Error: Could not find any open ports to start the server.")
-        return
+        try:
+            # Fallback to port 0 (the OS will automatically assign a free dynamic port)
+            server = socketserver.ThreadingTCPServer(("", 0), handler)
+            actual_port = server.server_address[1]
+        except OSError as e:
+            print(f"Error: Could not bind to any port, including dynamic port fallback: {e}")
+            return
         
     # Automatically refresh gallery HTML once on startup to reflect latest code/template changes
     try:

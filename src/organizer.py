@@ -303,10 +303,26 @@ def organize_library(
     # Use the caller-supplied list when provided; otherwise full scan.
     files_to_process = changed_files if changed_files is not None else find_lora_files(source_dir)
 
-    for lora_file in files_to_process:
+    from jobs import update_job_progress, get_current_job
+    job = get_current_job()
+    total_files = len(files_to_process)
+
+    for idx, lora_file in enumerate(files_to_process):
         # Guard: file might have been moved or deleted between detection and here.
         if not lora_file.exists():
             continue
+            
+        if job:
+            is_dedicated = job.name == "Organize Library"
+            percent = int((idx / total_files) * 80) + 10 if is_dedicated else None
+            update_job_progress(
+                percent=percent,
+                current=idx + 1,
+                total=total_files,
+                message=f"Organizing files... ({idx + 1}/{total_files})",
+                item_name=lora_file.name
+            )
+            
         try:
             target_folder = get_target_folder(lora_file, target_library_dir)
             target_path = target_folder / lora_file.name

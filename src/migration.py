@@ -547,8 +547,20 @@ def generate_missing_sha256_hashes(lora_root: Path) -> None:
     except ImportError:
         iterator = missing_hashes
         
+    from jobs import update_job_progress, get_current_job
+    job = get_current_job()
+
     for path, key in iterator:
         try:
+            if job:
+                percent = int((generated_count / len(missing_hashes)) * 80) + 10
+                update_job_progress(
+                    percent=percent,
+                    current=generated_count + 1,
+                    total=len(missing_hashes),
+                    message=f"Computing SHA256 hashes... ({generated_count + 1}/{len(missing_hashes)})",
+                    item_name=path.name
+                )
             if not isinstance(iterator, list):
                 # Update progress bar description
                 iterator.set_description(f"Hashing {path.name[:30]}")

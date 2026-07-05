@@ -219,6 +219,7 @@ def process_model_assets(
     download_preview: bool,
     retries: int = 3,
 ) -> dict[str, int]:
+    from jobs import update_job_progress, get_current_job
     summary = create_asset_summary()
     summary["models_checked"] = 1
 
@@ -231,7 +232,14 @@ def process_model_assets(
         download_metadata or (download_preview and not preview_image_exists(model_file))
     )
 
+    job = get_current_job()
+    is_single = job is None or job.progress_total <= 1
+
     if needs_remote_metadata:
+        update_job_progress(
+            percent=30 if is_single else None,
+            message=f"Querying CivitAI for {model_file.stem}..."
+        )
         metadata = fetch_model_metadata(model_file)
 
         if not metadata.get("ok"):
@@ -239,10 +247,19 @@ def process_model_assets(
             return summary
 
     if download_metadata and metadata is not None:
+        update_job_progress(
+            percent=60 if is_single else None,
+            message=f"Saving metadata for {model_file.stem}..."
+        )
         status = save_metadata_if_missing(model_file, metadata)
         count_status(summary, "metadata", status["status"])
 
     if download_preview and metadata is not None:
+        if not preview_image_exists(model_file):
+            update_job_progress(
+                percent=80 if is_single else None,
+                message=f"Downloading preview for {model_file.stem}..."
+            )
         status = download_preview_if_missing(model_file, metadata, retries)
         count_status(summary, "preview_image", status["status"])
 
@@ -263,11 +280,30 @@ def run_asset_job(
     download_preview: bool,
     retries: int = 3,
     target_files: list[Path] | None = None,
+    start_percent: int = 5,
+    scale_percent: int = 85,
 ) -> dict[str, int]:
     summary = create_asset_summary()
     model_files = target_files if target_files is not None else find_safetensors_files(library_dir)
 
-    for model_file in tqdm(model_files, desc="Processing models", unit="model"):
+    total_files = len(model_files)
+    from jobs import update_job_progress
+
+    msg = "Downloading metadata..." if download_metadata and not download_preview else (
+          "Downloading previews..." if download_preview and not download_metadata else 
+          "Downloading assets..."
+    )
+
+    for idx, model_file in enumerate(model_files):
+        current_idx = idx + 1
+        percent = int((idx / total_files) * scale_percent) + start_percent
+        update_job_progress(
+            percent=percent, 
+            current=current_idx, 
+            total=total_files, 
+            message=f"{msg} ({current_idx}/{total_files})", 
+            item_name=model_file.name
+        )
         update = process_model_assets(model_file, download_metadata, download_preview, retries)
         merge_summary(summary, update)
 
@@ -283,7 +319,20 @@ def run_organize(lora_root: Path, changed_files: list[Path] | None = None) -> di
 
 # Refresh the generated HTML gallery inside the configured LoRA root.
 def refresh_gallery(lora_root: Path) -> Path:
+    from jobs import update_job_progress, get_current_job
+    job = get_current_job()
+    is_dedicated = job is not None and job.name == "Rebuild Gallery"
+    
+    update_job_progress(
+        percent=40 if is_dedicated else None,
+        message="Compiling gallery database..."
+    )
     entries = build_gallery_index(lora_root)
+    
+    update_job_progress(
+        percent=80 if is_dedicated else None,
+        message="Generating gallery.html..."
+    )
     return save_gallery_html(entries, lora_root / "gallery.html")
 
 
@@ -335,12 +384,27 @@ def run_automatic(lora_root: Path) -> dict[str, dict[str, int] | str]:
         }
 
     # Changes detected — run targeted organize then targeted asset job and gallery refresh.
+    from jobs import update_job_progress
     print(f"Changes detected: {len(added)} added, {len(modified)} modified, {len(removed)} removed")
     changed_list = added + modified
+    
+    update_job_progress(percent=5, message="Organizing library files...")
     organize_summary, post_organize_files = organize_library(lora_root, print_summary=False, changed_files=changed_list)
 
-    asset_summary = run_asset_job(lora_root, download_metadata=True, download_preview=True, target_files=post_organize_files)
+    update_job_progress(percent=15, message="Syncing assets...")
+    asset_summary = run_asset_job(
+        lora_root, 
+        download_metadata=True, 
+        download_preview=True, 
+        target_files=post_organize_files,
+        start_percent=15,
+        scale_percent=70
+    )
+    
+    update_job_progress(percent=85, message="Updating gallery view...")
     gallery_index = refresh_gallery(lora_root)
+    
+    update_job_progress(percent=100, message="Automatic run complete.")
     log_operation("[Index] Automatic run complete")
 
     return {
