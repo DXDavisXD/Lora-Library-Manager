@@ -5565,11 +5565,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             
             if (!imgEl || !modalBody || !leftScrollable || !middleColumn || !rightColumn || !metaContainer || !orgContainer) return;
             
-            // Default to landscape (2-column) if no image or fails to load
-            let isPortrait = false;
-            if (imgEl.style.display !== "none" && imgEl.naturalWidth && imgEl.naturalHeight) {{
-                isPortrait = imgEl.naturalHeight > imgEl.naturalWidth;
-            }}
+            // Always use 3-column layout to align landscape cards with the 3-section layout style
+            const isPortrait = true;
             
             if (isPortrait) {{
                 // 3-column portrait layout
