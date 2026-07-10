@@ -43,6 +43,29 @@ class TestMetadataCompatibility(unittest.TestCase):
         self.assertEqual(merged["notes"], "some notes")
         self.assertEqual(merged["custom_field"], "custom_val")
 
+    def test_merge_metadata_protects_user_edits(self):
+        old_meta = {
+            "activation text": "user_defined_activation",
+            "preferred_weight": 0.85,
+            "negative_prompt": "user_bad_hands",
+            "rating": 5,
+            "collections": ["my_collection"]
+        }
+        new_meta = {
+            "activation text": "",
+            "preferred_weight": 0.0,
+            "negative_prompt": "",
+            "rating": 0,
+            "collections": []
+        }
+        merged = merge_metadata(old_meta, new_meta)
+        
+        self.assertEqual(merged["activation text"], "user_defined_activation")
+        self.assertEqual(merged["preferred_weight"], 0.85)
+        self.assertEqual(merged["negative_prompt"], "user_bad_hands")
+        self.assertEqual(merged["rating"], 5)
+        self.assertEqual(merged["collections"], ["my_collection"])
+
     def test_import_activation_text_only_if_empty(self):
         # Test 2: Activation text is copied into personal triggers only when they are empty.
         # Case A: Empty triggers

@@ -23,7 +23,16 @@ METADATA_FILENAME = "metadata.json"
 
 # Extract SHA256 from CivitAI metadata when available.
 def get_sha256_from_metadata(metadata: dict, filename: str) -> str:
+    if not metadata:
+        return ""
+    # Support normalized ModelInfo sidecar format
+    if "file_sha256" in metadata and metadata["file_sha256"]:
+        return str(metadata["file_sha256"]).lower()
+    if "sha256" in metadata and metadata["sha256"]:
+        return str(metadata["sha256"]).lower()
+
     unwrapped = unwrap_metadata(metadata)
+    # Support raw CivitAI format
     for file_info in unwrapped.get("files", []):
         if isinstance(file_info, dict):
             if file_info.get("name") == filename or file_info.get("primary") is True:
@@ -31,6 +40,7 @@ def get_sha256_from_metadata(metadata: dict, filename: str) -> str:
                 if isinstance(hashes, dict) and hashes.get("SHA256"):
                     return str(hashes["SHA256"]).lower()
     return ""
+
 
 
 # Find the standard metadata file inside a LoRA model folder.
@@ -138,9 +148,11 @@ def load_metadata(lora_file: Path) -> dict:
     if data_meta:
         merged_data = merge_metadata_dicts(merged_data, data_meta) if merged_data else data_meta
 
-    # If we merged multiple files, write the combined metadata back to <stem>.json
-    # and clean up standard metadata.json/civitai.info to avoid duplication
-    if merged_data:
+    # Only write/clean up if we actually merged multiple files or migrated metadata.json
+    files_loaded = sum(1 for d in [data_stem, data_civitai, data_meta] if d)
+    should_write = files_loaded > 1 or (data_meta and not data_stem and not data_civitai)
+
+    if merged_data and should_write:
         try:
             if not is_dry_run():
                 with stem_json.open("w", encoding="utf-8") as f:
@@ -162,6 +174,7 @@ def load_metadata(lora_file: Path) -> dict:
         except Exception as e:
             log_operation(f"Error saving merged metadata for {lora_file.name}: {e}")
 
+    if merged_data:
         return merged_data
 
     return {}
@@ -180,7 +193,10 @@ def get_model_name(metadata: dict, lora_file: Path) -> str:
 
 # Return trigger words from CivitAI metadata when available.
 def get_trigger_words(metadata: dict) -> list[str]:
-    trained_words = metadata.get("trainedWords", [])
+    if "trained_words" in metadata:
+        trained_words = metadata["trained_words"]
+    else:
+        trained_words = metadata.get("trainedWords", [])
 
     if isinstance(trained_words, list):
         flat_words = []
@@ -203,7 +219,9 @@ def get_trigger_words(metadata: dict) -> list[str]:
 # Parse trigger words into style groups from metadata, with custom group names.
 def parse_trigger_groups(metadata: dict) -> list[dict]:
     unwrapped = unwrap_metadata(metadata)
-    trained_words = unwrapped.get("trainedWords")
+    # Prefer trainedWords (which contains the grouped/comma-separated strings)
+    # over the flattened trained_words list.
+    trained_words = unwrapped.get("trainedWords") or unwrapped.get("trained_words")
     
     if not isinstance(trained_words, list):
         if isinstance(trained_words, str):
@@ -345,35 +363,6 @@ def build_gallery_entry(lora_file: Path) -> dict:
     metadata = load_metadata(lora_file)
     unwrapped = unwrap_metadata(metadata)
     
-    base_model = unwrapped.get("baseModel", "")
-    model_obj = unwrapped.get("model") or {}
-    model_name = model_obj.get("name", "") if isinstance(model_obj, dict) else ""
-    model_type = model_obj.get("type", "") if isinstance(model_obj, dict) else ""
-    
-    creator_obj = model_obj.get("creator") if isinstance(model_obj, dict) else None
-    creator = ""
-    if isinstance(creator_obj, dict):
-        creator = creator_obj.get("username", "")
-    elif isinstance(unwrapped.get("creator"), dict):
-        creator = unwrapped.get("creator", {}).get("username", "")
-    elif isinstance(unwrapped.get("creator"), str):
-        creator = unwrapped.get("creator", "")
-
-    # Fallback: extract creator from filename when metadata has no creator field.
-    # CivitAI downloads follow the pattern: <slug>-lora-<creator>.<ext>
-    # e.g. "ayako-kuroba-s2-illustriousxl-lora-nochekaiser.safetensors" → "nochekaiser"
-    if not creator:
-        creator = _extract_creator_from_filename(lora_file.stem)
-
-    tags = []
-    raw_tags = unwrapped.get("tags") or (model_obj.get("tags") if isinstance(model_obj, dict) else None)
-    if isinstance(raw_tags, list):
-        for tag in raw_tags:
-            if isinstance(tag, str):
-                tags.append(tag)
-            elif isinstance(tag, dict) and tag.get("name"):
-                tags.append(tag["name"])
-
     relative_path = ""
     try:
         relative_path = lora_file.resolve().relative_to(get_lora_root().resolve()).as_posix()
@@ -381,9 +370,55 @@ def build_gallery_entry(lora_file: Path) -> dict:
         relative_path = lora_file.name
 
     sha256 = get_sha256_from_metadata(metadata, lora_file.name)
-    model_id = unwrapped.get("modelId") or model_obj.get("id") or ""
-    version_id = unwrapped.get("id") or ""
-    version_name = unwrapped.get("name") or ""
+    
+    # Resolve provider
+    from providers.registry import resolve_provider
+    provider_name = resolve_provider(meta=metadata, sha256=sha256, filename=lora_file.name)
+    
+    if "provider" in metadata:
+        provider = metadata.get("provider", "civitai")
+        provider_display_name = metadata.get("provider_display_name", provider.title())
+        model_id = metadata.get("provider_model_id") or ""
+        version_id = metadata.get("provider_version_id") or ""
+        version_name = metadata.get("version_name") or ""
+        model_name = metadata.get("name") or lora_file.stem
+        model_type = "LORA"
+        base_model = metadata.get("base_model") or ""
+        creator = metadata.get("creator") or ""
+        tags = metadata.get("tags") or []
+    else:
+        # Legacy fallback
+        provider = "civitai"
+        provider_display_name = "CivitAI"
+        base_model = unwrapped.get("baseModel", "")
+        model_obj = unwrapped.get("model") or {}
+        model_name = model_obj.get("name", "") if isinstance(model_obj, dict) else ""
+        model_type = model_obj.get("type", "") if isinstance(model_obj, dict) else ""
+        
+        creator_obj = model_obj.get("creator") if isinstance(model_obj, dict) else None
+        creator = ""
+        if isinstance(creator_obj, dict):
+            creator = creator_obj.get("username", "")
+        elif isinstance(unwrapped.get("creator"), dict):
+            creator = unwrapped.get("creator", {}).get("username", "")
+        elif isinstance(unwrapped.get("creator"), str):
+            creator = unwrapped.get("creator", "")
+
+        if not creator:
+            creator = _extract_creator_from_filename(lora_file.stem)
+
+        tags = []
+        raw_tags = unwrapped.get("tags") or (model_obj.get("tags") if isinstance(model_obj, dict) else None)
+        if isinstance(raw_tags, list):
+            for tag in raw_tags:
+                if isinstance(tag, str):
+                    tags.append(tag)
+                elif isinstance(tag, dict) and tag.get("name"):
+                    tags.append(tag["name"])
+                    
+        model_id = unwrapped.get("modelId") or model_obj.get("id") or ""
+        version_id = unwrapped.get("id") or ""
+        version_name = unwrapped.get("name") or ""
 
     return {
         "name": get_model_name(metadata, lora_file),
@@ -404,6 +439,8 @@ def build_gallery_entry(lora_file: Path) -> dict:
         "tags": tags,
         "relative_path": relative_path,
         "sha256": sha256,
+        "provider": provider,
+        "provider_display_name": provider_display_name,
         "model_id": model_id,
         "version_id": version_id,
         "version_name": version_name,
@@ -680,11 +717,18 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
     
     # Serialize versions for JS dynamic updates
     versions_serialized = []
+    from providers.registry import get_provider
     for ver in versions:
         rel_preview = relative_asset_path(ver.get("preview_image", ""), output_path)
         v_trigger_words = ver.get("trigger_words", [])
         v_trigger_groups = ver.get("trigger_groups", [])
         v_groups_html = build_trigger_groups_html(v_trigger_words, v_trigger_groups)
+        
+        p_name = ver.get("provider") or "civitai"
+        provider = get_provider(p_name)
+        presentation = provider.presentation
+        
+        model_url = provider.get_model_page_url(ver.get("model_id"), ver.get("version_id"))
         
         versions_serialized.append({
             "filename": ver["filename"],
@@ -692,6 +736,11 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
             "version_name": ver["version_name"],
             "version_id": ver["version_id"],
             "model_id": ver.get("model_id"),
+            "provider": p_name,
+            "provider_display_name": presentation.display_name,
+            "provider_accent_color": presentation.accent_color,
+            "provider_icon": presentation.icon,
+            "model_url": model_url,
             "preview_image": rel_preview,
             "trigger_words": v_trigger_words,
             "trigger_groups_html": v_groups_html,
@@ -713,6 +762,13 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
         </div>
     """
 
+    latest_p_name = latest_ver.get("provider") or "civitai"
+    latest_provider = get_provider(latest_p_name)
+    latest_presentation = latest_provider.presentation
+    accent_color = latest_presentation.accent_color
+    icon = latest_presentation.icon
+    display_name = latest_presentation.display_name
+
     return f"""
         <article class="card" 
                   data-search="{escape_text(search_text)}" 
@@ -730,6 +786,7 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                   data-tags="{escape_text(json.dumps(group.get('tags', [])))}"
                   data-official-triggers="{escape_text(json.dumps(trigger_words))}"
                   data-versions="{escape_text(versions_json)}"
+                  data-provider="{escape_text(latest_p_name)}"
                   data-collections="[]"
                   data-rating="0"
                   data-favorite="false">
@@ -752,6 +809,11 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                     {escape_text(group.get("creator", ""))}
                 </div>
                 ''' if group.get("creator") else ''}
+                <div class="card-provider-badge-container" style="position: absolute; bottom: 12px; left: 12px; z-index: 5;" onclick="filterByProvider(event, '{latest_p_name}')">
+                    <span class="provider-badge" style="background: {accent_color}26; color: {accent_color}; border: 1px solid {accent_color}4d; cursor: pointer; pointer-events: auto; font-size: 9px; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; border-radius: 4px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);" title="Metadata Source: {display_name} - Click to filter">
+                        {icon} {display_name}
+                    </span>
+                </div>
                 <div class="preview-feedback">Triggers Copied!</div>
             </div>
             <div class="content">
@@ -827,11 +889,13 @@ def group_entries(entries: list[dict]) -> list[dict]:
 
     grouped = {}
     for entry in deduplicated:
+        provider = entry.get("provider") or "civitai"
+        provider_display_name = entry.get("provider_display_name") or provider.title()
         model_id = entry.get("model_id") or ""
         folder_name = entry.get("folder_name", "")
         
         if model_id:
-            group_key = f"model_{model_id}"
+            group_key = f"model_{provider}_{model_id}"
         elif folder_name and folder_name.lower() != "lora":
             group_key = f"folder_{folder_name.lower()}"
         else:
@@ -856,6 +920,8 @@ def group_entries(entries: list[dict]) -> list[dict]:
             "version_name": version_name,
             "version_id": entry.get("version_id"),
             "model_id": entry.get("model_id"),
+            "provider": provider,
+            "provider_display_name": provider_display_name,
             "preview_image": entry.get("preview_image"),
             "trigger_words": entry.get("trigger_words", []),
             "trigger_groups": entry.get("trigger_groups", []),
@@ -966,13 +1032,15 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             color: #ffffff;
         }}
         body.light-theme #sort,
-        body.light-theme #filter-base-model {{
+        body.light-theme #filter-base-model,
+        body.light-theme #filter-provider {{
             background: #ffffff;
             border-color: rgba(0, 0, 0, 0.08);
             color: #111827;
         }}
         body.light-theme #sort:focus,
-        body.light-theme #filter-base-model:focus {{
+        body.light-theme #filter-base-model:focus,
+        body.light-theme #filter-provider:focus {{
             background: #ffffff;
             border-color: var(--accent);
         }}
@@ -1093,9 +1161,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-color: rgba(0, 0, 0, 0.15);
             color: #1e293b;
         }}
-        body.light-theme .modal-body.three-column .modal-middle #modal-section-description::after {{
-            background: linear-gradient(to bottom, transparent, #ffffff);
-        }}
+
         body.light-theme .modal-preview-container {{
             background: #f3f4f6;
             border-color: rgba(0, 0, 0, 0.08);
@@ -1224,28 +1290,53 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         .header-container {{
-            max-width: 1400px;
-            margin: 0 auto;
             display: flex;
             align-items: center;
             background: rgba(22, 23, 26, 0.85);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 8px 16px;
-            gap: 16px;
+            border-radius: 16px;
+            padding: 15px 24px;
+            gap: 12px;
             width: 100%;
+            max-width: 1600px;
+            margin: 0 auto;
+            box-sizing: border-box;
         }}
 
         .header-left, .header-right {{
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 12px;
         }}
 
         .header-right {{
-            flex-grow: 1;
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            overflow: clip;
+        }}
+
+        /* Shrinkable center region (search + filter selects) */
+        .header-right-center {{
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1 1 0;
+            min-width: 0;
+        }}
+
+        /* Pinned right region — always visible, never squeezed out */
+        .header-right-end {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+            white-space: nowrap;
+            margin-left: auto;
         }}
 
         .divider {{
@@ -1281,6 +1372,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             cursor: pointer;
             transition: var(--transition);
             gap: 6px;
+            white-space: nowrap;
+            flex-shrink: 0;
         }}
 
         .btn-manage-link:hover {{
@@ -1294,7 +1387,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             align-items: center;
             flex: 1;
-            max-width: 100%;
+            min-width: 320px;
+            max-width: 440px;
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -1319,6 +1413,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         #search {{
             flex: 1;
+            min-width: 0;
             background: transparent;
             border: none;
             color: var(--text);
@@ -1515,10 +1610,16 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .select-wrapper {{
             position: relative;
-            width: 110px;
+            width: 120px;
+        }}
+        #filter-base-model-wrapper {{
+            width: 155px;
+        }}
+        #filter-provider-wrapper {{
+            width: 135px;
         }}
 
-        #sort, #filter-base-model {{
+        #sort, #filter-base-model, #filter-provider {{
             width: 100%;
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--border);
@@ -1536,7 +1637,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             white-space: nowrap;
         }}
 
-        #sort:focus, #filter-base-model:focus {{
+        #sort:focus, #filter-base-model:focus, #filter-provider:focus {{
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
             background: #1c202b;
@@ -1561,7 +1662,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         main {{
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 32px;
         }}
@@ -2438,7 +2539,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-color: rgba(255, 255, 255, 0.2);
         }}
 
-        .btn-action-civitai {{
+        .btn-action-provider {{
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -2456,15 +2557,23 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             color: #94a3b8;
         }}
 
-        .btn-action-civitai:hover, .btn-action-civitai:focus-visible {{
+        .btn-action-provider:hover, .btn-action-provider:focus-visible {{
             background: rgba(30, 41, 59, 0.8);
             border-color: rgba(255, 255, 255, 0.2);
             color: white;
         }}
 
-        .civitai-red-text {{
-            color: #ef4444;
+        /* ── Provider badge style ── */
+        .provider-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 99px;
+            font-size: 11px;
             font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }}
 
         /* Hover Preview Tooltip */
@@ -2559,7 +2668,58 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             border-color: rgba(99, 102, 241, 0.2) !important;
         }}
 
-        @media (max-width: 1024px) {{
+        @media (max-width: 1366px) {{
+            .header-container {{
+                gap: 8px !important;
+                padding: 8px 12px !important;
+            }}
+            .header-left, .header-right {{
+                gap: 8px !important;
+            }}
+            .header-left img {{
+                display: none !important;
+            }}
+            .header-left h1 {{
+                font-size: 18px !important;
+            }}
+            .weight-label {{
+                display: none !important;
+            }}
+            .btn-weight {{
+                padding: 0 8px !important;
+                font-size: 11px !important;
+                height: 26px !important;
+                line-height: 26px !important;
+            }}
+            .weight-selector {{
+                height: 30px !important;
+            }}
+            #filter-base-model-wrapper, 
+            #filter-provider-wrapper {{
+                width: 95px !important;
+            }}
+            #sort-wrapper {{
+                width: 75px !important;
+            }}
+            #sort, #filter-base-model, #filter-provider {{
+                font-size: 12px !important;
+                padding: 6px 18px 6px 6px !important;
+                height: 30px !important;
+            }}
+            .select-arrow {{
+                right: 4px !important;
+                width: 12px !important;
+                height: 12px !important;
+            }}
+            .header-container .divider {{
+                display: none !important;
+            }}
+            .count {{
+                font-size: 12px !important;
+            }}
+        }}
+
+        @media (max-width: 1200px) {{
             .header-container {{
                 flex-direction: column;
                 align-items: stretch;
@@ -2591,7 +2751,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 order: 2;
             }}
 
-            #sort, #filter-base-model {{
+            #sort, #filter-base-model, #filter-provider {{
                 width: 100%;
             }}
 
@@ -2636,8 +2796,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         .card-indicators {{
             position: absolute;
-            bottom: 8px;
-            left: 8px;
+            bottom: 12px;
+            right: 12px;
             display: flex;
             gap: 4px;
             pointer-events: none;
@@ -2964,6 +3124,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             text-overflow: ellipsis;
             flex: 1;
         }}
+        .meta-value-container span.provider-badge {{
+            overflow: visible;
+            text-overflow: clip;
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }}
 
         .btn-copy-meta {{
             background: transparent;
@@ -3062,6 +3228,24 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             word-break: break-word;
             overflow-y: auto;
             padding-right: 6px;
+            -webkit-mask-image: none;
+            mask-image: none;
+            transition: mask-image 0.15s ease, -webkit-mask-image 0.15s ease;
+        }}
+
+        .modal-description-text.has-more-below {{
+            -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to bottom, black calc(100% - 24px), transparent 100%);
+        }}
+
+        .modal-description-text.has-more-above {{
+            -webkit-mask-image: linear-gradient(to top, black calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to top, black calc(100% - 24px), transparent 100%);
+        }}
+
+        .modal-description-text.has-more-above.has-more-below {{
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%);
         }}
 
         .modal-description-text a {{
@@ -3110,18 +3294,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             height: auto;
         }}
 
-        /* Fade-out gradient at the bottom of the description when overflowing */
-        .modal-body.three-column .modal-middle #modal-section-description::after {{
-            content: "";
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 48px;
-            background: linear-gradient(to bottom, transparent, rgba(17, 19, 28, 0.95));
-            pointer-events: none;
-            border-radius: 0 0 8px 8px;
-        }}
+
 
         /* Tags Container */
         .modal-tags-container {{
@@ -3415,8 +3588,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         /* 3-Column Portrait Layout Overrides */
         .modal-middle {{
-            width: 32%;
-            min-width: 280px;
+            width: 33.333%;
+            min-width: 250px;
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
@@ -3429,14 +3602,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         }}
 
         .modal-body.three-column .modal-left {{
-            width: 30%;
-            min-width: 280px;
-            max-width: 450px;
+            width: 33.333%;
+            min-width: 250px;
         }}
 
         .modal-body.three-column .modal-right {{
-            width: 38%;
-            min-width: 320px;
+            width: 33.333%;
+            min-width: 250px;
         }}
 
         .modal-section-group {{
@@ -3690,7 +3862,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         </div>
                     </div>
                 </div>
-                <div class="select-wrapper" style="width: 150px;">
+                <div id="filter-base-model-wrapper" class="select-wrapper">
                     <select id="filter-base-model" aria-label="Filter by base model">
                         <option value="">All Base Models</option>
                     </select>
@@ -3698,7 +3870,15 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         <polyline points="6 9 12 15 18 9"/>
                     </svg>
                 </div>
-                <div class="select-wrapper">
+                <div id="filter-provider-wrapper" class="select-wrapper">
+                    <select id="filter-provider" aria-label="Filter by provider">
+                        <option value="">All Providers</option>
+                    </select>
+                    <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </div>
+                <div id="sort-wrapper" class="select-wrapper">
                     <select id="sort" aria-label="Sort models">
                         <option value="name-asc">A-Z</option>
                         <option value="name-desc">Z-A</option>
@@ -3709,6 +3889,9 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                         <polyline points="6 9 12 15 18 9"/>
                     </svg>
                 </div>
+            </div><!-- /.header-right -->
+            <!-- Pinned end: count + Manager + theme toggle — direct children of pill, always visible -->
+            <div class="header-right-end">
                 <div class="divider"></div>
                 <span id="count" class="count"></span>
                 <div class="divider"></div>
@@ -3721,8 +3904,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
                     <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 </button>
-            </div>
-        </div>
+            </div><!-- /.header-right-end -->
+        </div><!-- /.header-container -->
     </header>
     <main>
         <section id="grid" class="grid">
@@ -3833,12 +4016,42 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                                 </div>
                             </div>
                         </div>
+                        
+                        <div class="modal-section" id="modal-section-provider-info" style="margin-top: 16px;">
+                            <h3 style="margin-bottom: 8px;">Provider Information</h3>
+                            <div class="modal-meta-rows">
+                                <div class="meta-row">
+                                    <strong>Provider</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-info-provider" class="provider-badge"></span>
+                                    </div>
+                                </div>
+                                <div class="meta-row">
+                                    <strong>Metadata Source</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-info-source" style="color: var(--text-muted); font-size: 13px;"></span>
+                                    </div>
+                                </div>
+                                <div class="meta-row">
+                                    <strong>Provider Model ID</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-info-model-id" style="color: var(--text-muted); font-size: 13px; font-family: monospace;"></span>
+                                    </div>
+                                </div>
+                                <div class="meta-row">
+                                    <strong>Provider Version ID</strong>
+                                    <div class="meta-value-container">
+                                        <span id="modal-info-version-id" style="color: var(--text-muted); font-size: 13px; font-family: monospace;"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="modal-left-actions">
                         <button id="modal-btn-copy-tag" class="btn-action-primary">Copy Tag</button>
                         <button id="modal-btn-add-prompt" class="btn-action-secondary">Add to Prompt</button>
-                        <a id="modal-btn-civitai" class="btn-action-civitai" target="_blank" rel="noopener noreferrer">View on <span class="civitai-red-text">CivitAI</span></a>
+                        <a id="modal-btn-provider" class="btn-action-provider" target="_blank" rel="noopener noreferrer">View on <span id="modal-btn-provider-name" style="font-weight: 700;">Provider</span></a>
                     </div>
                 </div>
 
@@ -3939,7 +4152,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     </div>
                     
                     <!-- Triggers stacked vertically (No two column layout) -->
-                    <div class="modal-section" style="display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; overflow: hidden;">
+                    <div id="modal-triggers-section" class="modal-section" style="display: flex; flex-direction: column; gap: 16px; flex: 1; min-height: 0; overflow: hidden;">
                         <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
                             <h3 id="modal-official-triggers-title">Official Triggers</h3>
                             <div id="modal-trigger-search-container" style="display: none; margin-top: 8px; margin-bottom: 4px;">
@@ -4139,6 +4352,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             
             const filterBaseModelSelect = document.getElementById("filter-base-model");
             const selectedBaseModel = filterBaseModelSelect ? filterBaseModelSelect.value : "";
+            const filterProviderSelect = document.getElementById("filter-provider");
+            const selectedProvider = filterProviderSelect ? filterProviderSelect.value : "";
             const favsList = getFavorites();
             const sysColl = SYSTEM_COLLECTIONS.find(sc => sc.name === activeCollection);
             
@@ -4180,8 +4395,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 if (activeCreator) {{
                     matchesCreator = (card.dataset.creator === activeCreator);
                 }}
+
+                let matchesProvider = true;
+                if (selectedProvider) {{
+                    matchesProvider = (card.dataset.provider === selectedProvider);
+                }}
                 
-                const matches = matchesSearch && matchesCollection && matchesBaseModel && matchesCreator;
+                const matches = matchesSearch && matchesCollection && matchesBaseModel && matchesCreator && matchesProvider;
                 card.hidden = !matches;
 
                 if (matches) {{
@@ -4308,6 +4528,24 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             card.dataset.baseModel = selectedVer.base_model;
             card.dataset.description = selectedVer.description;
             card.dataset.officialTriggers = JSON.stringify(selectedVer.trigger_words);
+            card.dataset.provider = selectedVer.provider;
+            
+            const badgeContainer = card.querySelector(".card-provider-badge-container");
+            const badgeEl = card.querySelector(".provider-badge");
+            if (badgeContainer && badgeEl) {{
+                const icon = selectedVer.provider_icon || "";
+                const name = selectedVer.provider_display_name || "";
+                const color = selectedVer.provider_accent_color || "#9ca3af";
+                const pName = selectedVer.provider || "";
+                
+                badgeEl.textContent = (icon ? icon + " " : "") + name;
+                badgeEl.style.background = color + "26";
+                badgeEl.style.color = color;
+                badgeEl.style.border = "1px solid " + color + "4d";
+                badgeEl.title = `Metadata Source: ${{name}} - Click to filter`;
+                
+                badgeContainer.onclick = (e) => filterByProvider(e, pName);
+            }}
             
             // Update Image Preview
             const previewContainer = card.querySelector(".preview");
@@ -4733,6 +4971,49 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                       .replace(/'/g, "&#039;");
         }}
 
+        function updateModalProviderInfo(selectedVer) {{
+            const providerLink = document.getElementById("modal-btn-provider");
+            if (providerLink) {{
+                const modelUrl = selectedVer.model_url;
+                if (modelUrl) {{
+                    providerLink.style.display = "inline-flex";
+                    providerLink.href = modelUrl;
+                    
+                    const nameSpan = document.getElementById("modal-btn-provider-name");
+                    if (nameSpan) {{
+                        nameSpan.textContent = selectedVer.provider_display_name;
+                        nameSpan.style.color = selectedVer.provider_accent_color;
+                    }}
+                }} else {{
+                    providerLink.style.display = "none";
+                }}
+            }}
+
+            const providerBadge = document.getElementById("modal-info-provider");
+            if (providerBadge) {{
+                const icon = selectedVer.provider_icon || "";
+                const name = selectedVer.provider_display_name || "";
+                const color = selectedVer.provider_accent_color || "#9ca3af";
+                
+                providerBadge.textContent = (icon ? icon + " " : "") + name;
+                providerBadge.style.background = color + "26";
+                providerBadge.style.color = color;
+                providerBadge.style.border = "1px solid " + color + "4d";
+            }}
+            const sourceEl = document.getElementById("modal-info-source");
+            if (sourceEl) {{
+                sourceEl.textContent = selectedVer.provider_display_name || "—";
+            }}
+            const modelIdEl = document.getElementById("modal-info-model-id");
+            if (modelIdEl) {{
+                modelIdEl.textContent = selectedVer.model_id || "—";
+            }}
+            const versionIdEl = document.getElementById("modal-info-version-id");
+            if (versionIdEl) {{
+                versionIdEl.textContent = selectedVer.version_id || "—";
+            }}
+        }}
+
         function updatePromptBuilderUI() {{
             const tokens = getPromptTokens();
             const badge = document.getElementById("prompt-badge");
@@ -5084,22 +5365,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     }}
                 }}
 
-                // Populate CivitAI link
-                const civitaiLink = document.getElementById("modal-btn-civitai");
-                if (civitaiLink) {{
-                    const modelId = selectedVer.model_id;
-                    const versionId = selectedVer.version_id;
-                    if (modelId) {{
-                        civitaiLink.style.display = "inline-flex";
-                        let url = `https://civitai.red/models/${{modelId}}`;
-                        if (versionId) {{
-                            url += `?modelVersionId=${{versionId}}`;
-                        }}
-                        civitaiLink.href = url;
-                    }} else {{
-                        civitaiLink.style.display = "none";
-                    }}
-                }}
+                // Populate Provider link and details
+                updateModalProviderInfo(selectedVer);
 
                 // Image preview
                 const imgEl = document.getElementById("modal-image");
@@ -5294,6 +5561,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             const metaContainer = document.getElementById("modal-meta-container");
             const orgContainer = document.getElementById("modal-organization-container");
             const tagsSection = document.getElementById("modal-section-tags");
+            const triggersSection = document.getElementById("modal-triggers-section");
             
             if (!imgEl || !modalBody || !leftScrollable || !middleColumn || !rightColumn || !metaContainer || !orgContainer) return;
             
@@ -5321,8 +5589,15 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 }}
                 
                 // Set modal-left width
-                document.querySelector(".modal-left").style.width = "30%";
+                document.querySelector(".modal-left").style.width = "33.333%";
                 document.querySelector(".modal-left").style.borderRight = "1px solid var(--border)";
+                
+                // Configure triggers section for portrait 3-column layout (flex to fill height, hidden scroll overflow)
+                if (triggersSection) {{
+                    triggersSection.style.flex = "1";
+                    triggersSection.style.minHeight = "0";
+                    triggersSection.style.overflow = "hidden";
+                }}
             }} else {{
                 // 2-column landscape layout
                 modalBody.classList.add("two-column");
@@ -5353,6 +5628,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 // Restore widths
                 document.querySelector(".modal-left").style.width = "40%";
                 document.querySelector(".modal-left").style.borderRight = "1px solid var(--border)";
+                
+                // Configure triggers section for landscape 2-column layout (expand naturally inside scrollable modal-right)
+                if (triggersSection) {{
+                    triggersSection.style.flex = "none";
+                    triggersSection.style.minHeight = "auto";
+                    triggersSection.style.overflow = "visible";
+                }}
             }}
         }}
 
@@ -6435,6 +6717,15 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             updateCreatorChip();
             updateFilter();
         }}
+
+        function filterByProvider(e, name) {{
+            if (e) e.stopPropagation();
+            const providerSelect = document.getElementById("filter-provider");
+            if (providerSelect) {{
+                providerSelect.value = name || "";
+                providerSelect.dispatchEvent(new Event("change"));
+            }}
+        }}
         
         function updateCreatorChip() {{
             const chip = document.getElementById("creator-chip");
@@ -6688,6 +6979,54 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                 filterBaseModelSelect.value = currentSelected;
             }} else {{
                 filterBaseModelSelect.value = "";
+            }}
+        }}
+
+        function updateProviderFilterOptions() {{
+            const filterProviderSelect = document.getElementById("filter-provider");
+            if (!filterProviderSelect) return;
+            
+            const currentSelected = filterProviderSelect.value;
+            const providersSet = new Set();
+            
+            cards.forEach(card => {{
+                const provider = card.dataset.provider;
+                if (provider) {{
+                    providersSet.add(provider);
+                }}
+            }});
+            
+            const providerDetails = new Map();
+            cards.forEach(card => {{
+                try {{
+                    const versions = JSON.parse(card.dataset.versions || "[]");
+                    versions.forEach(v => {{
+                        if (v.provider) {{
+                            providerDetails.set(v.provider, {{
+                                display_name: v.provider_display_name,
+                                icon: v.provider_icon
+                            }});
+                        }}
+                    }});
+                }} catch (e) {{}}
+            }});
+
+            const sortedProviders = Array.from(providersSet).sort();
+            
+            filterProviderSelect.innerHTML = '<option value="">All Providers</option>';
+            sortedProviders.forEach(p => {{
+                const opt = document.createElement("option");
+                opt.value = p;
+                const details = providerDetails.get(p);
+                const displayName = details ? ((details.icon ? details.icon + " " : "") + details.display_name) : p;
+                opt.textContent = displayName;
+                filterProviderSelect.appendChild(opt);
+            }});
+            
+            if (sortedProviders.includes(currentSelected)) {{
+                filterProviderSelect.value = currentSelected;
+            }} else {{
+                filterProviderSelect.value = "";
             }}
         }}
 
@@ -6991,20 +7330,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     document.getElementById("modal-filename").textContent = selectedVer.filename;
                     document.getElementById("modal-path").textContent = selectedVer.relative_path;
 
-                    // Update CivitAI link
-                    const civitaiLink = document.getElementById("modal-btn-civitai");
-                    if (civitaiLink) {{
-                        const modelId = selectedVer.model_id;
-                        const versionId = selectedVer.version_id;
-                        if (modelId) {{
-                            civitaiLink.style.display = "inline-flex";
-                            let url = `https://civitai.red/models/${{modelId}}`;
-                            if (versionId) url += `?modelVersionId=${{versionId}}`;
-                            civitaiLink.href = url;
-                        }} else {{
-                            civitaiLink.style.display = "none";
-                        }}
-                    }}
+                    // Update Provider info
+                    updateModalProviderInfo(selectedVer);
 
                     // Fetch version-specific user data
                     fetch(`/api/get_user_data?relative_path=${{encodeURIComponent(selectedVer.relative_path)}}`)
@@ -7048,6 +7375,12 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         const filterBaseModelSelect = document.getElementById("filter-base-model");
         if (filterBaseModelSelect) {{
             filterBaseModelSelect.addEventListener("change", updateFilter);
+        }}
+
+        // Provider filter listener
+        const filterProviderSelect = document.getElementById("filter-provider");
+        if (filterProviderSelect) {{
+            filterProviderSelect.addEventListener("change", updateFilter);
         }}
 
         // Add Notes placeholder trigger button
@@ -7409,6 +7742,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
         performSort();
         updateBaseModelFilterOptions();
+        updateProviderFilterOptions();
         updateFilter();
         updatePromptBuilderUI();
         loadUserDataSummary();
@@ -7636,11 +7970,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             }}, 150);
         }});
 
-        // Capturing scroll event listener for all scrollable trigger list containers (cards and details modal)
+        // Capturing scroll event listener for all scrollable list containers (triggers & description)
         document.addEventListener("scroll", (e) => {{
             const target = e.target;
-            if (target && target.classList && target.classList.contains("trigger-groups-container")) {{
-                updateScrollMask(target);
+            if (target && target.classList) {{
+                if (target.classList.contains("trigger-groups-container") || target.classList.contains("modal-description-text")) {{
+                    updateScrollMask(target);
+                }}
             }}
         }}, {{ capture: true, passive: true }});
 

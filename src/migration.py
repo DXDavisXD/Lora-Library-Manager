@@ -162,33 +162,44 @@ def scan_library_hierarchy(lora_root: Path) -> dict:
                         unwrapped = unwrap_metadata(metadata)
                         if not sha256:
                             sha256 = get_sha256_from_metadata(metadata, path.name)
-                        if not version_id:
-                            version_id = unwrapped.get("id") or ""
-                        if not model_id:
-                            model_obj = unwrapped.get("model") or {}
-                            model_id = unwrapped.get("modelId") or model_obj.get("id") or ""
                         
+                        if "provider" in metadata:
+                            provider_name = metadata.get("provider", "civitai")
+                            version_id = metadata.get("provider_version_id") or ""
+                            model_id = metadata.get("provider_model_id") or ""
+                            original_filename = metadata.get("original_filename") or ""
+                        else:
+                            provider_name = "civitai"
+                            if not version_id:
+                                version_id = unwrapped.get("id") or ""
+                            if not model_id:
+                                model_obj = unwrapped.get("model") or {}
+                                model_id = unwrapped.get("modelId") or model_obj.get("id") or ""
+                            original_filename = get_original_filename(metadata)
+
                         # Check if renamed
-                        files = unwrapped.get("files", [])
-                        if isinstance(files, list) and len(files) > 0:
-                            file_names = [f.get("name") for f in files if isinstance(f, dict) and f.get("name")]
-                            if file_names and path.name not in file_names:
-                                # Determine if we should count it as renamed based on our heuristics
-                                should_mark_renamed = False
-                                if is_specific:
-                                    should_mark_renamed = True
-                                else:
-                                    # Count safetensors in parent dir
-                                    try:
-                                        num_safetensors = sum(1 for p in path.parent.iterdir() if p.is_file() and p.suffix.lower() == ".safetensors")
-                                        if num_safetensors == 1:
-                                            should_mark_renamed = True
-                                    except OSError:
-                                        pass
-                                        
-                                if should_mark_renamed:
-                                    is_renamed = True
-                                    original_filename = get_original_filename(metadata)
+                        if original_filename:
+                            if path.name.lower() != Path(original_filename).name.lower():
+                                is_renamed = True
+                        elif unwrapped.get("files"):
+                            files = unwrapped.get("files", [])
+                            if isinstance(files, list) and len(files) > 0:
+                                file_names = [f.get("name") for f in files if isinstance(f, dict) and f.get("name")]
+                                if file_names and path.name not in file_names:
+                                    should_mark_renamed = False
+                                    if is_specific:
+                                        should_mark_renamed = True
+                                    else:
+                                        try:
+                                            num_safetensors = sum(1 for p in path.parent.iterdir() if p.is_file() and p.suffix.lower() == ".safetensors")
+                                            if num_safetensors == 1:
+                                                should_mark_renamed = True
+                                        except OSError:
+                                            pass
+                                            
+                                    if should_mark_renamed:
+                                        is_renamed = True
+                                        original_filename = get_original_filename(metadata)
             
             # Fallback if sha256 is empty/unavailable
             if not sha256:

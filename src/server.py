@@ -844,18 +844,35 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error_response(500, f"Error computing stats: {e}")
 
     def handle_get_settings(self):
-        """Return current settings (api key, dry_run, verbose, lora_root, download_strategy, weight, sort)."""
+        """Return current settings (api key, dry_run, verbose, lora_root, download_strategy, weight, sort, providers)."""
         try:
-            from config import (get_civitai_api_key, is_dry_run, is_verbose, get_lora_root,
-                                get_download_strategy, get_default_weight, get_default_sort)
+            from config import (is_dry_run, is_verbose, get_lora_root,
+                                get_download_strategy, get_default_weight, get_default_sort, get_provider_api_key)
+            from providers.registry import get_provider_presentations
+            
+            providers_status = []
+            for name, presentation in get_provider_presentations().items():
+                api_key = get_provider_api_key(name)
+                status = "Configured" if api_key else "Missing"
+                providers_status.append({
+                    "id": name,
+                    "display_name": presentation["display_name"],
+                    "accent_color": presentation["accent_color"],
+                    "icon": presentation["icon"],
+                    "website": presentation["website"],
+                    "status": status,
+                    "has_api_key": bool(api_key),
+                })
+
             self.send_success_response({
-                "api_key": get_civitai_api_key(),
+                "api_key": get_provider_api_key("civitai"), # Legacy backward compatibility
                 "dry_run": is_dry_run(),
                 "verbose": is_verbose(),
                 "lora_root": str(get_lora_root()),
                 "download_strategy": get_download_strategy(),
                 "default_weight": get_default_weight(),
                 "default_sort": get_default_sort(),
+                "providers": providers_status,
             })
         except Exception as e:
             self.send_error_response(500, f"Error reading settings: {e}")
@@ -865,11 +882,14 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
-            from config import (set_civitai_api_key, set_dry_run, set_verbose, set_lora_root,
+            from config import (set_provider_api_key, set_dry_run, set_verbose, set_lora_root,
                                 set_download_strategy, set_default_weight, set_default_sort)
             
-            if "api_key" in body:
-                set_civitai_api_key(body["api_key"])
+            if "api_keys" in body and isinstance(body["api_keys"], dict):
+                for provider, key in body["api_keys"].items():
+                    set_provider_api_key(provider, key)
+            if "api_key" in body: # Legacy backward compatibility
+                set_provider_api_key("civitai", body["api_key"])
             if "dry_run" in body:
                 set_dry_run(bool(body["dry_run"]))
             if "verbose" in body:
@@ -955,6 +975,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 job = jobs.DownloadPreviewsJob()
             elif action == "download-metadata":
                 job = jobs.DownloadMetadataJob()
+            elif action == "update-metadata":
+                job = jobs.UpdateMetadataJob()
             elif action == "rebuild-gallery":
                 job = jobs.RebuildGalleryJob()
             elif action == "migrate-metadata":

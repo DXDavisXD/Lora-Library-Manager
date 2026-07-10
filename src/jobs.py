@@ -156,6 +156,16 @@ class DownloadMetadataJob(BaseJob):
         run_asset_job(lora_root, download_metadata=True, download_preview=False)
 
 
+class UpdateMetadataJob(BaseJob):
+    def __init__(self):
+        super().__init__("Update Metadata", "normal")
+
+    def execute(self, lora_root: Path):
+        update_job_progress(percent=5, message="Scanning existing metadata for updates...")
+        from main import run_asset_job
+        run_asset_job(lora_root, download_metadata=True, download_preview=False, force_update=True)
+
+
 class RebuildGalleryJob(BaseJob):
     def __init__(self):
         super().__init__("Rebuild Gallery", "interactive")

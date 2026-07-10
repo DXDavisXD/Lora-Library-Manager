@@ -142,8 +142,8 @@ def search_models(query: str, limit: int = 20) -> dict:
 
 
 # Fetch details for one Civitai model by model ID.
-def get_model(model_id: int) -> dict:
-    return fetch_json(f"models/{model_id}")
+def get_model(model_id: int, api_key: str | None = None) -> dict:
+    return fetch_json(f"models/{model_id}", api_key=api_key)
 
 
 # Extract likely download URLs from a Civitai model response.

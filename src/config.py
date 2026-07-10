@@ -39,6 +39,7 @@ _settings = load_settings()
 DRY_RUN = _settings.get("dry_run", False)
 VERBOSE = _settings.get("verbose", False)
 CIVITAI_API_KEY = _settings.get("civitai_api_key", "")
+ARCENCIEL_API_KEY = _settings.get("arcenciel_api_key", "")
 ENABLE_FILE_LOGGING = True
 
 
@@ -70,12 +71,53 @@ def set_verbose(value: bool) -> None:
     save_settings(settings)
 
 
+# Return the current CivitAI API key.
+def get_civitai_api_key() -> str:
+    return get_provider_api_key("civitai")
+
+
 # Update the CivitAI API Key and persist to settings.json.
-def set_civitai_api_key(value: str) -> None:
-    global CIVITAI_API_KEY
-    CIVITAI_API_KEY = value.strip()
+def set_civitai_api_key(key: str) -> None:
+    set_provider_api_key("civitai", key)
+
+
+# Return the current Arcenciel API key.
+def get_arcenciel_api_key() -> str:
+    return get_provider_api_key("arcenciel")
+
+
+# Update the Arcenciel API Key and persist to settings.json.
+def set_arcenciel_api_key(key: str) -> None:
+    set_provider_api_key("arcenciel", key)
+
+
+def get_provider_api_key(provider: str) -> str:
+    """
+    Return the stored API key for *provider*.
+    Loads dynamically from settings to ensure fresh values are read.
+    """
+    global CIVITAI_API_KEY, ARCENCIEL_API_KEY
     settings = load_settings()
-    settings["civitai_api_key"] = CIVITAI_API_KEY
+    val = settings.get(f"{provider}_api_key", "").strip()
+    if provider == "civitai":
+        CIVITAI_API_KEY = val
+    elif provider == "arcenciel":
+        ARCENCIEL_API_KEY = val
+    return val
+
+
+def set_provider_api_key(provider: str, key: str) -> None:
+    """
+    Update the API key for *provider* and persist to settings.json.
+    """
+    global CIVITAI_API_KEY, ARCENCIEL_API_KEY
+    settings = load_settings()
+    val = key.strip()
+    settings[f"{provider}_api_key"] = val
+    if provider == "civitai":
+        CIVITAI_API_KEY = val
+    elif provider == "arcenciel":
+        ARCENCIEL_API_KEY = val
     save_settings(settings)
 
 
@@ -175,11 +217,6 @@ def is_lora_file(path: Path) -> bool:
     return path.is_file() and path.suffix.lower() in LORA_EXTENSIONS
 
 
-# Return the CivitAI API key configured for this application.
-def get_civitai_api_key() -> str:
-    return CIVITAI_API_KEY.strip()
-
-
 def normalize_for_comparison(s: str) -> str:
     """Normalize a string by lowercasing and removing all non-alphanumeric characters."""
     if not s:
@@ -191,11 +228,11 @@ def clean_model_collections(collections: list, folder_path: Path) -> list:
     """Filter out collections that match the model folder name, file stems, or model names from metadata."""
     if not collections:
         return []
-        
+
     folder_path = Path(folder_path)
     folder_name = folder_path.name
     normalized_targets = {normalize_for_comparison(folder_name)}
-    
+
     # Add file stems of LoRA files in the folder
     try:
         for f in folder_path.iterdir():
@@ -203,7 +240,7 @@ def clean_model_collections(collections: list, folder_path: Path) -> list:
                 normalized_targets.add(normalize_for_comparison(f.stem))
     except Exception:
         pass
-        
+
     # Add model names and version names from metadata files in the same directory
     try:
         for f in folder_path.iterdir():
@@ -222,7 +259,7 @@ def clean_model_collections(collections: list, folder_path: Path) -> list:
                     pass
     except Exception:
         pass
-        
+
     cleaned = []
     for c in collections:
         if not c or not isinstance(c, str):
@@ -240,29 +277,19 @@ def clean_model_collections(collections: list, folder_path: Path) -> list:
         if c_norm in normalized_targets:
             continue
         cleaned.append(c_clean)
-        
+
     return cleaned
 
 
 def is_complete_metadata(metadata: dict) -> bool:
-    """Determine whether the metadata contains complete official CivitAI metadata."""
-    if not isinstance(metadata, dict):
-        return False
-    # Unwrap if wrapped in {"ok": True, "data": ...}
-    if metadata.get("ok") is True and isinstance(metadata.get("data"), dict):
-        metadata = metadata["data"]
+    """
+    Backward-compatibility shim.
 
-    has_model_id = "modelId" in metadata or "model_id" in metadata
-    has_version_id = "id" in metadata or "modelVersionId" in metadata or "version_id" in metadata
-
-    if not (has_model_id and has_version_id):
-        return False
-
-    # Check for core official fields to ensure it is not a minimal stub
-    core_fields = ["trainedWords", "baseModel", "creator", "description", "files"]
-    found_count = sum(1 for field in core_fields if field in metadata)
-
-    return found_count >= 2
-
-
-
+    The authoritative, provider-aware implementation lives in
+    ``downloader.is_complete_metadata()``.  This thin wrapper delegates
+    to it so that callers that still import from config continue to work
+    without modification.
+    """
+    # Lazy import avoids a circular dependency at module load time.
+    from downloader import is_complete_metadata as _impl
+    return _impl(metadata)

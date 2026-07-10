@@ -29,6 +29,7 @@ from downloader import (
     save_metadata_if_missing,
     load_json_lenient,
 )
+from providers.provider_base import ModelInfo
 from gallery import build_gallery_index, save_gallery_html, metadata_belongs_to_file
 from library_index import load_library_index, detect_library_changes
 from server import start_server
@@ -186,30 +187,51 @@ def create_asset_summary() -> dict[str, int]:
     }
 
 
-# Fetch CivitAI metadata for a safetensors model file.
-def fetch_model_metadata(model_file: Path) -> dict:
-    response = get_model_for_safetensors(model_file)
-
-    if response.get("ok"):
+# Fetch metadata for a safetensors model file from the auto-detected provider.
+def fetch_model_info(model_file: Path) -> ModelInfo | None:
+    """
+    Fetch model version metadata from the auto-detected provider by file hash.
+    Returns ModelInfo or None.
+    """
+    from providers.registry import resolve_provider, get_provider
+    from config import get_lora_root, get_provider_api_key
+    
+    # 1. Load existing metadata to help resolve provider
+    metadata = load_existing_metadata(model_file)
+    
+    # 2. Get file hash if available
+    sha256 = ""
+    if metadata:
+        from gallery import get_sha256_from_metadata
+        sha256 = get_sha256_from_metadata(metadata, model_file.name)
+    if not sha256:
+        # Use cached or compute
+        from library_index import load_library_index, make_index_key
+        lora_root = get_lora_root()
+        index = load_library_index(lora_root)
+        key = make_index_key(model_file, lora_root)
+        cached = index.get("models", {}).get(key, {})
+        sha256 = cached.get("sha256", "")
+    if not sha256:
+        from civitai import compute_sha256
         try:
-            from civitai import get_model, unwrap_civitai_metadata
-            unwrapped = unwrap_civitai_metadata(response)
-            model_id = unwrapped.get("modelId")
-            if model_id:
-                model_res = get_model(model_id)
-                if model_res.get("ok") and isinstance(model_res.get("data"), dict):
-                    model_data = model_res["data"]
-                    if "creator" in model_data:
-                        unwrapped["creator"] = model_data["creator"]
-        except Exception:
+            sha256 = compute_sha256(model_file)
+        except OSError:
             pass
-        return response
-
-    return {
-        "ok": False,
-        "error": response.get("error", "unknown_error"),
-        "message": response.get("message", "Could not fetch CivitAI metadata."),
-    }
+            
+    # 3. Resolve the provider
+    provider_name = resolve_provider(meta=metadata, sha256=sha256, filename=model_file.name)
+    provider = get_provider(provider_name)
+    
+    # 4. Fetch from provider if it supports hash lookup
+    if provider.capabilities.hash_lookup and sha256:
+        api_key = get_provider_api_key(provider_name)
+        try:
+            return provider.fetch_by_hash(sha256, api_key=api_key)
+        except Exception as e:
+            log_operation(f"API fetch failed via {provider_name} for {model_file.name}: {e}")
+            
+    return None
 
 
 # Process one safetensors model for metadata and preview downloads.
@@ -218,49 +240,66 @@ def process_model_assets(
     download_metadata: bool,
     download_preview: bool,
     retries: int = 3,
+    force_update: bool = False,
 ) -> dict[str, int]:
     from jobs import update_job_progress, get_current_job
     summary = create_asset_summary()
     summary["models_checked"] = 1
 
-    if model_assets_complete(model_file):
+    if not force_update and model_assets_complete(model_file):
         summary["completed_skipped"] += 1
         return summary
 
     metadata = load_existing_metadata(model_file)
-    needs_remote_metadata = (metadata is None or not is_complete_metadata(metadata)) and (
-        download_metadata or (download_preview and not preview_image_exists(model_file))
+    needs_remote_metadata = force_update or (
+        (metadata is None or not is_complete_metadata(metadata)) and (
+            download_metadata or (download_preview and not preview_image_exists(model_file))
+        )
     )
 
     job = get_current_job()
     is_single = job is None or job.progress_total <= 1
 
+    model_info = None
     if needs_remote_metadata:
         update_job_progress(
             percent=30 if is_single else None,
-            message=f"Querying CivitAI for {model_file.stem}..."
+            message=f"Fetching metadata for {model_file.stem}..."
         )
-        metadata = fetch_model_metadata(model_file)
+        model_info = fetch_model_info(model_file)
 
-        if not metadata.get("ok"):
+        if model_info is None:
             summary["api_errors"] += 1
             return summary
+    elif metadata is not None:
+        # Load ModelInfo from existing metadata
+        from providers.registry import resolve_provider, get_provider
+        p_key = resolve_provider(meta=metadata)
+        provider = get_provider(p_key)
+        # unwrap and convert
+        from civitai import unwrap_civitai_metadata
+        unwrapped = unwrap_civitai_metadata(metadata)
+        if p_key == "civitai" and hasattr(provider, "_to_model_info"):
+            model_info = provider._to_model_info(unwrapped)
 
-    if download_metadata and metadata is not None:
+    # Use model_info if we have it; otherwise default to metadata (dict) for fallback compatibility
+    metadata_arg = model_info if model_info is not None else metadata
+
+    if download_metadata and metadata_arg is not None:
         update_job_progress(
             percent=60 if is_single else None,
             message=f"Saving metadata for {model_file.stem}..."
         )
-        status = save_metadata_if_missing(model_file, metadata)
+        status = save_metadata_if_missing(model_file, metadata_arg)
         count_status(summary, "metadata", status["status"])
 
-    if download_preview and metadata is not None:
+    if download_preview and metadata_arg is not None:
         if not preview_image_exists(model_file):
             update_job_progress(
                 percent=80 if is_single else None,
                 message=f"Downloading preview for {model_file.stem}..."
             )
-        status = download_preview_if_missing(model_file, metadata, retries)
+        status = download_preview_if_missing(model_file, metadata_arg, retries)
         count_status(summary, "preview_image", status["status"])
 
     return summary
@@ -282,6 +321,7 @@ def run_asset_job(
     target_files: list[Path] | None = None,
     start_percent: int = 5,
     scale_percent: int = 85,
+    force_update: bool = False,
 ) -> dict[str, int]:
     summary = create_asset_summary()
     model_files = target_files if target_files is not None else find_safetensors_files(library_dir)
@@ -289,10 +329,13 @@ def run_asset_job(
     total_files = len(model_files)
     from jobs import update_job_progress
 
-    msg = "Downloading metadata..." if download_metadata and not download_preview else (
-          "Downloading previews..." if download_preview and not download_metadata else 
-          "Downloading assets..."
-    )
+    if force_update:
+        msg = "Updating metadata..."
+    else:
+        msg = "Downloading metadata..." if download_metadata and not download_preview else (
+              "Downloading previews..." if download_preview and not download_metadata else 
+              "Downloading assets..."
+        )
 
     for idx, model_file in enumerate(model_files):
         current_idx = idx + 1
@@ -304,7 +347,7 @@ def run_asset_job(
             message=f"{msg} ({current_idx}/{total_files})", 
             item_name=model_file.name
         )
-        update = process_model_assets(model_file, download_metadata, download_preview, retries)
+        update = process_model_assets(model_file, download_metadata, download_preview, retries, force_update=force_update)
         merge_summary(summary, update)
 
     return summary

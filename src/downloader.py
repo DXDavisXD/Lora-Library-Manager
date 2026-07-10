@@ -16,8 +16,8 @@ from config import (
     is_verbose,
     log_operation,
     is_lora_file,
-    is_complete_metadata,
 )
+from providers.provider_base import ModelInfo
 
 METADATA_FILENAME = "metadata.json"
 DEFAULT_TIMEOUT = 60
@@ -130,6 +130,57 @@ def metadata_belongs_to_file(metadata: dict, filename: str) -> bool:
     return True
 
 
+def is_complete_metadata(metadata: dict) -> bool:
+    """
+    Return True only when the sidecar contains enough metadata fields
+    (model ID, version ID, plus at least a few core fields) to be considered
+    'complete' – i.e. no further API fetch is needed.
+    """
+    if not isinstance(metadata, dict):
+        return False
+
+    from providers.registry import detect_from_metadata, detect_from_legacy_fields
+    provider = detect_from_metadata(metadata) or detect_from_legacy_fields(metadata)
+    if not provider:
+        return False
+
+    # Normalized check
+    if "provider" in metadata:
+        has_model_id = bool(metadata.get("provider_model_id"))
+        has_version_id = bool(metadata.get("provider_version_id"))
+        if not (has_model_id and has_version_id):
+            return False
+        
+        # Check core fields present in normalized shape
+        core_fields = ["trained_words", "base_model", "creator", "description"]
+        present = sum(1 for f in core_fields if metadata.get(f))
+        return present >= 2
+
+    # Legacy check (if provider resolved to civitai but file is old format)
+    # Support both the wrapped {"ok": …, "data": {…}} and the unwrapped forms
+    data = metadata
+    if "ok" in metadata and "data" in metadata:
+        data = metadata.get("data") or {}
+
+    has_model_id = (
+        "modelId"       in data or
+        "model_id"      in data or
+        ("model" in data and isinstance(data["model"], dict) and "id" in data["model"])
+    )
+    has_version_id = (
+        "id"             in data or
+        "modelVersionId" in data or
+        "version_id"     in data
+    )
+
+    if not (has_model_id and has_version_id):
+        return False
+
+    core_fields = ["trainedWords", "baseModel", "creator", "description", "files"]
+    present     = sum(1 for f in core_fields if f in data)
+    return present >= 2
+
+
 def model_file_assets_complete(model_file: Path) -> bool:
     model_folder = model_file.parent
     model_stem = model_file.stem
@@ -169,10 +220,31 @@ def merge_metadata(old_meta: dict, new_meta: dict) -> dict:
         old_meta = {}
     if not isinstance(new_meta, dict):
         new_meta = {}
+    
+    # 1. Base merge: start with fresh metadata
     merged = dict(new_meta)
+    
+    # 2. Keep old keys if they do not exist in new metadata
     for k, v in old_meta.items():
         if k not in merged:
             merged[k] = v
+            
+    # 3. Strict protection: do not overwrite user-defined/local edits with empty/default values
+    protected_keys = [
+        "activation text",
+        "preferred weight",
+        "negative text",
+        "notes",
+        "_metadataUpdated",
+        "preferred_weight",
+        "negative_prompt",
+        "rating",
+        "collections"
+    ]
+    for k in protected_keys:
+        if k in old_meta and old_meta[k] not in (None, "", [], 0, 0.0):
+            merged[k] = old_meta[k]
+            
     return merged
 
 
@@ -270,31 +342,56 @@ def load_json_lenient(path: Path) -> dict:
             return {}
 
 
-# Save CivitAI metadata to model-specific json sidecar without overwriting.
-def save_metadata_if_missing(model_path: Path, civitai_metadata: dict) -> dict:
+# Save provider metadata to model-specific json sidecar.
+def save_metadata_if_missing(model_path: Path, model_info: ModelInfo | dict) -> dict:
     from datetime import datetime
     model_folder, model_stem = _resolve_model_path_info(model_path)
     target_path = model_folder / f"{model_stem}.json"
     shared_path = model_folder / "metadata.json"
 
-    # Load existing metadata from BOTH paths if they exist, merging them
+    # Convert dictionary to ModelInfo if passed for backward compatibility
+    if isinstance(model_info, dict):
+        from providers.registry import resolve_provider, get_provider
+        p_key = resolve_provider(meta=model_info)
+        provider = get_provider(p_key)
+        # Unwrap and convert
+        from civitai import unwrap_civitai_metadata
+        unwrapped = unwrap_civitai_metadata(model_info)
+        if p_key == "civitai" and hasattr(provider, "_to_model_info"):
+            model_info = provider._to_model_info(unwrapped)
+        else:
+            # If not civitai or no converter, make a dummy ModelInfo
+            model_info = ModelInfo(
+                provider=p_key,
+                provider_display_name=p_key.title(),
+                provider_model_id=str(unwrapped.get("modelId", "")),
+                provider_version_id=str(unwrapped.get("id", "")),
+                name=unwrapped.get("name", model_stem),
+                version_name=unwrapped.get("version_name", ""),
+                creator=unwrapped.get("creator", ""),
+                description=unwrapped.get("description", ""),
+                base_model=unwrapped.get("baseModel", ""),
+                trained_words=unwrapped.get("trainedWords", []),
+            )
+
+    # 1. Load existing metadata from BOTH paths if they exist, merging them
     # to ensure user-defined custom fields from metadata.json are not lost
     existing_data = {}
     
-    # 1. Load from metadata.json first
+    # Load from metadata.json first
     if shared_path.exists():
         shared_data = load_json_lenient(shared_path)
         if isinstance(shared_data, dict):
             existing_data = merge_metadata(existing_data, shared_data)
             
-    # 2. Load from <model_name>.json next (overwriting fallback values)
+    # Load from <model_name>.json next (overwriting fallback values)
     if target_path.exists():
         target_data = load_json_lenient(target_path)
         if isinstance(target_data, dict):
             existing_data = merge_metadata(existing_data, target_data)
 
-    unwrapped_new = unwrap_civitai_metadata(civitai_metadata)
-    merged_data = merge_metadata(existing_data, unwrapped_new)
+    new_data = model_info.to_sidecar_dict()
+    merged_data = merge_metadata(existing_data, new_data)
 
     # Import useful fields to user_data.json
     user_data_path = model_folder / "user_data.json"
@@ -455,14 +552,17 @@ def download_many(urls: list[str], destination_dir: Path, retries: int = 3) -> l
 
 
 # Download the preview image for a model folder or file when no preview exists yet.
-def download_preview_if_missing(model_path: Path, civitai_metadata: dict, retries: int = 3) -> dict:
+def download_preview_if_missing(model_path: Path, model_info: ModelInfo | dict, retries: int = 3) -> dict:
     if preview_image_exists(model_path):
         return make_status("skipped", None, "Preview image already exists.")
 
-    preview_url = extract_preview_url(civitai_metadata)
+    if isinstance(model_info, dict):
+        preview_url = extract_preview_url(model_info)
+    else:
+        preview_url = model_info.preview_urls[0] if model_info.preview_urls else ""
 
     if not preview_url:
-        return make_status("missing", None, "No preview image URL found in CivitAI metadata.")
+        return make_status("missing", None, "No preview image URL found in metadata.")
 
     model_folder, model_stem = _resolve_model_path_info(model_path)
     extension = image_extension_from_url(preview_url)
@@ -470,10 +570,10 @@ def download_preview_if_missing(model_path: Path, civitai_metadata: dict, retrie
     return download_to_path(preview_url, target_path, retries)
 
 
-# Download model assets from CivitAI metadata without overwriting local files.
-def download_model_assets(model_path: Path, civitai_metadata: dict, retries: int = 3) -> dict:
+# Download model assets from metadata without overwriting local files.
+def download_model_assets(model_path: Path, model_info: ModelInfo | dict, retries: int = 3) -> dict:
     return {
-        "metadata": save_metadata_if_missing(model_path, civitai_metadata),
-        "preview_image": download_preview_if_missing(model_path, civitai_metadata, retries),
+        "metadata": save_metadata_if_missing(model_path, model_info),
+        "preview_image": download_preview_if_missing(model_path, model_info, retries),
     }
 

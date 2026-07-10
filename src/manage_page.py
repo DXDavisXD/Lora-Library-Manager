@@ -203,21 +203,23 @@ def build_manage_page(lora_root: Path) -> str:
     padding: 16px 32px;
   }}
   .topbar-container {{
-    max-width: 1400px;
-    margin: 0 auto;
     display: flex;
     align-items: center;
     background: rgba(22, 23, 26, 0.85);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
-    padding: 8px 16px;
-    gap: 16px;
+    border-radius: 16px;
+    padding: 15px 24px;
+    gap: 12px;
     width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    height: 70px;
+    box-sizing: border-box;
   }}
   .topbar-logo {{
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 800;
     letter-spacing: -0.025em;
     background: linear-gradient(135deg, #a5b4fc, #6366f1);
@@ -229,7 +231,23 @@ def build_manage_page(lora_root: Path) -> str:
     color: var(--text-muted);
     font-weight: 500;
   }}
-  .topbar-sep {{ flex: 1; }}
+  .topbar-right {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-left: auto;
+  }}
+  .topbar-divider {{
+    width: 1px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }}
+  body.light-theme .topbar-divider {{
+    background: rgba(0, 0, 0, 0.08);
+  }}
   .nav-btn {{
     text-decoration: none;
     display: inline-flex;
@@ -254,7 +272,7 @@ def build_manage_page(lora_root: Path) -> str:
 
   /* ── Main layout ── */
   main {{
-    max-width: 1400px;
+    max-width: 1600px;
     width: 100%;
     margin: 0 auto;
     padding: 24px 32px;
@@ -552,17 +570,41 @@ def build_manage_page(lora_root: Path) -> str:
     border-radius: 24px;
     transition: var(--transition);
   }}
-  .toggle-track::after {{
-    content: '';
-    position: absolute;
-    top: 3px; left: 3px;
-    width: 16px; height: 16px;
-    background: var(--text-muted);
-    border-radius: 50%;
-    transition: var(--transition);
-  }}
   .toggle-switch input:checked + .toggle-track {{ background: var(--accent); border-color: var(--accent); }}
   .toggle-switch input:checked + .toggle-track::after {{ transform: translateX(20px); background: #fff; }}
+  
+  /* ── Provider Settings Blocks ── */
+  .provider-setting-block {{
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.01);
+    margin-bottom: 8px;
+  }}
+  .provider-setting-block:last-child {{
+    margin-bottom: 0;
+  }}
+  .status-badge {{
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+  }}
+  .status-badge.status-configured {{
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }}
+  .status-badge.status-missing {{
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+  }}
+
   .btn-save {{
     padding: 9px 16px;
     background: var(--accent);
@@ -584,7 +626,8 @@ def build_manage_page(lora_root: Path) -> str:
     gap: 24px;
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow-y: auto;
+    padding-right: 6px;
   }}
 
   /* Active queue card */
@@ -713,9 +756,6 @@ def build_manage_page(lora_root: Path) -> str:
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-height: 350px;
-    overflow-y: auto;
-    padding-right: 4px;
   }}
   .activity-item {{
     display: flex;
@@ -824,6 +864,22 @@ def build_manage_page(lora_root: Path) -> str:
     background: var(--danger);
     color: white;
   }}
+
+  /* Collapsible Activity Log Panel */
+  .activity-log-panel {{
+    max-height: 550px;
+    overflow: hidden;
+  }}
+  .activity-log-panel.collapsed {{
+    max-height: 47px;
+  }}
+  .activity-log-panel.collapsed .panel-body {{
+    opacity: 0;
+    pointer-events: none;
+  }}
+  .activity-log-panel.collapsed .toggle-arrow {{
+    transform: rotate(-90deg);
+  }}
 </style>
 </head>
 <body>
@@ -838,20 +894,23 @@ def build_manage_page(lora_root: Path) -> str:
 
 <div class="topbar">
   <div class="topbar-container">
-    <div class="topbar-logo" style="display: flex; align-items: center; gap: 8px;">
-      <img src="/logo.png" style="width: 24px; height: 24px; border-radius: 6px; object-fit: cover;" alt="logo">
+    <div class="topbar-logo" style="display: flex; align-items: center; gap: 12px;">
+      <img src="/logo.png" style="width: 32px; height: 32px; border-radius: 8px; object-fit: cover;" alt="logo">
       LoRA<span>Manager</span>
     </div>
     <div class="topbar-sub">Control Center</div>
-    <div class="topbar-sep"></div>
-    <a class="nav-btn" href="/">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      🖼️ Browse Gallery
-    </a>
-    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme" style="margin-left: auto; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); transition: var(--transition);">
-      <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-    </button>
+    <div class="topbar-right">
+      <div class="topbar-divider"></div>
+      <a class="nav-btn" href="/">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Browse Gallery</span>
+      </a>
+      <div class="topbar-divider"></div>
+      <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); transition: var(--transition);">
+        <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -927,6 +986,13 @@ def build_manage_page(lora_root: Path) -> str:
             <span class="btn-label">
               Download Metadata
               <span class="btn-sub">Fetch missing CivitAI JSON sidecars</span>
+            </span>
+          </button>
+          <button class="action-btn" id="btn-update-metadata" onclick="triggerTask('update-metadata')">
+            <span class="btn-icon">🔄</span>
+            <span class="btn-label">
+              Update Metadata
+              <span class="btn-sub">Force refresh existing metadata & tags from websites</span>
             </span>
           </button>
           <button class="action-btn" id="btn-rebuild" onclick="triggerTask('rebuild-gallery')">
@@ -1066,9 +1132,11 @@ def build_manage_page(lora_root: Path) -> str:
                 <button class="btn-secondary-outline" onclick="browseLoraRoot()" type="button">Browse...</button>
               </div>
             </div>
-            <div class="setting-row">
-              <div class="setting-label">CivitAI API Key</div>
-              <input type="password" class="setting-input" id="api-key-input" placeholder="Paste your API key…">
+            <div class="setting-row" style="margin-bottom: 8px;">
+              <div class="setting-label" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px;">Providers Configuration</div>
+              <div id="providers-settings-container" style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+                <!-- Dynamically populated -->
+              </div>
             </div>
             
             <div class="settings-grid">
@@ -1173,10 +1241,15 @@ def build_manage_page(lora_root: Path) -> str:
         </div>
       </div>
 
-      <!-- Recent activity feed -->
-      <div class="panel" style="max-height: 200px; display: flex; flex-direction: column; flex-shrink: 0;">
-        <div class="panel-header">Recent Activity Log</div>
-        <div class="panel-body" style="overflow-y: auto; flex: 1; min-height: 0; padding: 12px 18px;">
+      <!-- Recent activity feed (Collapsible Accordion) -->
+      <div id="activity-log-panel" class="panel activity-log-panel collapsed" style="flex-shrink: 0; transition: max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s;">
+        <div class="panel-header" onclick="toggleActivityLog()" style="cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between;">
+          <span>Recent Activity Log</span>
+          <svg class="toggle-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); margin-left: 8px;">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="panel-body" style="overflow-y: auto; flex: 1; min-height: 0; padding: 12px 18px; transition: opacity 0.2s;">
           <div id="activity-feed" class="activity-feed" style="max-height: none;">
             <div style="text-align:center; padding: 24px; color:var(--text-muted); font-size:13px; font-style:italic;">No historical records loaded</div>
           </div>
@@ -1194,6 +1267,7 @@ def build_manage_page(lora_root: Path) -> str:
   let runningTaskId = null;
   let eventSource = null;
   let pollInterval = null;
+  let lastHistoryJson = '';
 
   // ── Toast Messages ─────────────────────────────────────────────────────────
   function toast(msg, type='info') {{
@@ -1473,6 +1547,10 @@ def build_manage_page(lora_root: Path) -> str:
     fetch('/api/task-history')
       .then(r => r.json())
       .then(history => {{
+        const historyJson = JSON.stringify(history);
+        if (historyJson === lastHistoryJson) return;
+        lastHistoryJson = historyJson;
+
         const feed = document.getElementById('activity-feed');
         if (history.length > 0) {{
           feed.innerHTML = history.map(h => {{
@@ -1515,31 +1593,45 @@ def build_manage_page(lora_root: Path) -> str:
       .catch(() => {{}});
   }}
 
-  // ── Settings Functions ──────────────────────────────────────────────────────
   function loadSettings() {{
     fetch('/api/settings')
       .then(r => r.json())
       .then(s => {{
-        const keyInput = document.getElementById('api-key-input');
-        if (s.api_key) {{
-          keyInput.placeholder = s.api_key.length > 8
-            ? s.api_key.slice(0,4) + '••••' + s.api_key.slice(-4)
-            : '(set)';
-        }} else {{
-          keyInput.placeholder = 'Paste your API key…';
-        }}
         document.getElementById('lora-root-input').value = s.lora_root || '';
         document.getElementById('setting-download-strategy').value = s.download_strategy || 'skip';
         document.getElementById('setting-default-sort').value = s.default_sort || 'name';
         document.getElementById('setting-default-weight').value = s.default_weight || 1.0;
         document.getElementById('toggle-dry-run').checked  = !!s.dry_run;
         document.getElementById('toggle-verbose').checked  = !!s.verbose;
+
+        // Populate provider settings dynamically
+        const container = document.getElementById('providers-settings-container');
+        if (container && s.providers) {{
+          container.innerHTML = s.providers.map(p => {{
+            const badgeClass = p.status === 'Configured' ? 'status-configured' : 'status-missing';
+            const placeholder = p.has_api_key ? '••••••••' : `Paste your ${{p.display_name}} API key...`;
+            return `
+              <div class="provider-setting-block">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 14px; color: ${{p.accent_color}}; font-weight: bold;">${{p.icon || '🌐'}}</span>
+                    <span style="font-weight: 600; color: var(--text); font-size: 13px;">${{p.display_name}}</span>
+                  </div>
+                  <span class="status-badge ${{badgeClass}}">${{p.status}}</span>
+                </div>
+                <div class="setting-row" style="margin-bottom: 0; padding-bottom: 0; border-bottom: none; flex-direction: row; align-items: center; gap: 12px;">
+                  <div class="setting-label" style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; flex: 0 0 80px;">API Key</div>
+                  <input type="password" class="setting-input provider-key-input" data-provider="${{p.id}}" placeholder="${{placeholder}}" style="flex: 1;">
+                </div>
+              </div>
+            `;
+          }}).join('');
+        }}
       }})
       .catch(() => {{}});
   }}
 
   function saveSettings() {{
-    const apiKey = document.getElementById('api-key-input').value.trim();
     const loraRoot = document.getElementById('lora-root-input').value.trim();
     const downloadStrategy = document.getElementById('setting-download-strategy').value;
     const defaultSort = document.getElementById('setting-default-sort').value;
@@ -1547,14 +1639,24 @@ def build_manage_page(lora_root: Path) -> str:
     const dryRun = document.getElementById('toggle-dry-run').checked;
     const verbose = document.getElementById('toggle-verbose').checked;
 
+    // Collect provider API keys
+    const apiKeys = {{}};
+    document.querySelectorAll('.provider-key-input').forEach(input => {{
+      const provider = input.dataset.provider;
+      const value = input.value.trim();
+      if (value) {{
+        apiKeys[provider] = value;
+      }}
+    }});
+
     const payload = {{
       dry_run: dryRun,
       verbose: verbose,
       download_strategy: downloadStrategy,
       default_sort: defaultSort,
-      default_weight: defaultWeight
+      default_weight: defaultWeight,
+      api_keys: apiKeys
     }};
-    if (apiKey) payload.api_key = apiKey;
     if (loraRoot) payload.lora_root = loraRoot;
 
     fetch('/api/settings', {{
@@ -1566,7 +1668,6 @@ def build_manage_page(lora_root: Path) -> str:
     .then(s => {{
       if (s.ok) {{
         toast('Configuration saved successfully!', 'success');
-        document.getElementById('api-key-input').value = '';
         loadSettings();
         // Refresh statistics in header
         setTimeout(refreshStats, 800);
@@ -1621,8 +1722,32 @@ def build_manage_page(lora_root: Path) -> str:
       .catch(() => {{}});
   }}
 
+  function toggleActivityLog() {{
+    const panel = document.getElementById('activity-log-panel');
+    panel.classList.toggle('collapsed');
+    const isCollapsed = panel.classList.contains('collapsed');
+    localStorage.setItem('activityLogCollapsed', isCollapsed ? 'true' : 'false');
+    
+    if (!isCollapsed) {{
+      setTimeout(() => {{
+        panel.scrollIntoView({{ behavior: 'smooth', block: 'end' }});
+      }}, 100);
+    }}
+  }}
+
   // ── Initialization ──────────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {{
+    // Initialize Collapsed State for Activity Log
+    const isCollapsedSaved = localStorage.getItem('activityLogCollapsed') !== 'false';
+    const activityPanel = document.getElementById('activity-log-panel');
+    if (activityPanel) {{
+      if (isCollapsedSaved) {{
+        activityPanel.classList.add('collapsed');
+      }} else {{
+        activityPanel.classList.remove('collapsed');
+      }}
+    }}
+
     loadSettings();
     loadBackups();
     refreshTasks();

@@ -19,9 +19,10 @@ from config import (
     get_civitai_api_key,
     log_operation
 )
-from civitai import unwrap_civitai_metadata, success_response, error_response, fetch_json
 from gallery import load_metadata, unwrap_metadata, get_sha256_from_metadata
 from downloader import download_to_path, download_preview_if_missing, preview_image_path
+from providers.provider_base import ModelInfo
+
 
 MANIFEST_VERSION = 1
 DEFAULT_TIMEOUT = 60
@@ -94,10 +95,24 @@ def export_library_manifest(lora_root: Path, output_file: Path, favorite_hashes:
             if sha256 not in favorite_hashes and path.name not in favorite_hashes:
                 continue
                 
-        # Extract metadata parameters
-        civitai_version_id = unwrapped.get("id")
-        civitai_model_id = unwrapped.get("modelId")
+        # Resolve provider
+        from providers.registry import resolve_provider
+        provider_name = resolve_provider(meta=metadata, sha256=sha256, filename=path.name)
         
+        provider_model_id = None
+        provider_version_id = None
+        provider_display_name = "CivitAI"
+        if "provider" in metadata:
+            provider_name = metadata.get("provider", "civitai")
+            provider_display_name = metadata.get("provider_display_name", provider_name.title())
+            provider_model_id = metadata.get("provider_model_id")
+            provider_version_id = metadata.get("provider_version_id")
+        else:
+            provider_name = "civitai"
+            provider_display_name = "CivitAI"
+            provider_model_id = unwrapped.get("modelId") or (unwrapped.get("model") or {}).get("id")
+            provider_version_id = unwrapped.get("id")
+
         # Try to resolve creator & base model
         creator = ""
         model_obj = unwrapped.get("model") or {}
@@ -109,13 +124,15 @@ def export_library_manifest(lora_root: Path, output_file: Path, favorite_hashes:
         elif isinstance(unwrapped.get("creator"), str):
             creator = unwrapped.get("creator", "")
             
-        base_model = unwrapped.get("baseModel", "")
+        base_model = metadata.get("base_model") or unwrapped.get("baseModel", "")
         
         model_entry = {
             "filename": path.name,
             "sha256": sha256,
-            "civitai_model_id": civitai_model_id,
-            "civitai_version_id": civitai_version_id,
+            "provider": provider_name,
+            "provider_display_name": provider_display_name,
+            "provider_model_id": provider_model_id,
+            "provider_version_id": provider_version_id,
             "creator": creator,
             "base_model": base_model
         }
@@ -202,18 +219,37 @@ def print_detailed_progress(current, total, downloaded, skipped, failed, is_firs
     sys.stdout.write(f"Failed:\n{failed}\n")
     sys.stdout.flush()
 
-# Download model version file with Content-Disposition lookup
-def download_model_version(version_id: int, target_dir: Path, fallback_filename: str) -> Path | None:
-    api_key = get_civitai_api_key()
-    url = f"https://civitai.com/api/download/models/{version_id}"
+# Download model version file with Content-Disposition lookup using registered provider
+def download_model_version(
+    provider_name: str,
+    model_id: str | None,
+    version_id: str,
+    target_dir: Path,
+    fallback_filename: str,
+) -> Path | None:
+    from providers.registry import get_provider
+    from config import get_provider_api_key
+
+    provider = get_provider(provider_name)
+    api_key = get_provider_api_key(provider_name)
+
+    if not provider.capabilities.model_download:
+        log_operation(f"Provider {provider_name} does not support model download.")
+        return None
+
+    url = provider.get_download_url(model_id, version_id, api_key=api_key)
+    if not url:
+        return None
+
+    headers = {"User-Agent": "LoRA-Library-Manager/2.0"}
     if api_key:
-        url += f"?token={api_key}"
+        headers["Authorization"] = f"Bearer {api_key}"
         
-    request = Request(url, headers={"User-Agent": "LoRA-Library-Manager/0.1"})
+    request = Request(url, headers={k: v for k, v in headers.items() if v})
     tmp_path = None
     
     try:
-        with urlopen(request, timeout=DEFAULT_TIMEOUT) as response:
+        with urlopen(request, timeout=120) as response:
             # Parse Content-Disposition filename
             filename = fallback_filename
             content_disp = response.headers.get("Content-Disposition")
@@ -248,7 +284,7 @@ def download_model_version(version_id: int, target_dir: Path, fallback_filename:
             os.replace(tmp_path, target_path)
             return target_path
     except Exception as e:
-        log_operation(f"Error downloading model version {version_id}: {e}")
+        log_operation(f"Error downloading model version {version_id} via {provider_name}: {e}")
         if tmp_path and tmp_path.exists():
             try:
                 tmp_path.unlink()
@@ -256,20 +292,22 @@ def download_model_version(version_id: int, target_dir: Path, fallback_filename:
                 pass
         return None
 
-# Fetch CivitAI metadata for version
-def fetch_and_save_metadata(version_id: int, target_dir: Path, filename: str) -> dict | None:
-    res = fetch_json(f"model-versions/{version_id}")
-    if res.get("ok") is True and isinstance(res.get("data"), dict):
-        metadata = res["data"]
-        stem = Path(filename).stem
-        metadata_file = target_dir / f"{stem}.json"
-        try:
-            unwrapped = unwrap_civitai_metadata(metadata)
-            with metadata_file.open("w", encoding="utf-8") as f:
-                json.dump(unwrapped, f, indent=2)
-            return metadata
-        except OSError as e:
-            log_operation(f"Error saving metadata for version {version_id}: {e}")
+# Fetch metadata for version using provider and save
+def fetch_and_save_metadata(provider_name: str, model_id: str | None, version_id: str, target_dir: Path, filename: str) -> ModelInfo | None:
+    from providers.registry import get_provider
+    from config import get_provider_api_key
+    from downloader import save_metadata_if_missing
+    
+    provider = get_provider(provider_name)
+    api_key = get_provider_api_key(provider_name)
+    
+    try:
+        model_info = provider.fetch_by_id(model_id, version_id, api_key=api_key)
+        if model_info:
+            save_metadata_if_missing(target_dir / filename, model_info)
+            return model_info
+    except Exception as e:
+        log_operation(f"Error fetching metadata for version {version_id} via {provider_name}: {e}")
     return None
 
 
@@ -425,7 +463,16 @@ def import_library_manifest(lora_root: Path, manifest_file: Path) -> None:
     current_count = already_installed
     for m in missing_models:
         current_count += 1
-        version_id = m.get("civitai_version_id")
+        provider_name = m.get("provider")
+        version_id = m.get("provider_version_id")
+        model_id = m.get("provider_model_id")
+        
+        # Legacy backup file compatibility shim
+        if not provider_name:
+            provider_name = "civitai"
+            version_id = m.get("civitai_version_id")
+            model_id = m.get("civitai_model_id")
+            
         filename = m.get("filename")
         sha256 = m.get("sha256")
         
@@ -442,14 +489,14 @@ def import_library_manifest(lora_root: Path, manifest_file: Path) -> None:
             continue
             
         # Clear line and print download status
-        print(f"\nDownloading {filename} (Version ID: {version_id})...")
+        print(f"\nDownloading {filename} ({provider_name.title()} Version ID: {version_id})...")
         
         # Determine target folder: check if another version of this model is already installed locally
         target_folder = None
-        m_model_id = m.get("civitai_model_id")
+        m_model_id = model_id
         if m_model_id:
             for lm in local_models:
-                if lm.get("model_id") == m_model_id:
+                if str(lm.get("model_id")) == str(m_model_id):
                     target_folder = lm["parent_path"]
                     break
                     
@@ -458,13 +505,13 @@ def import_library_manifest(lora_root: Path, manifest_file: Path) -> None:
             target_folder = lora_root / stem
         
         # 1. Download Model File
-        saved_model_path = download_model_version(version_id, target_folder, filename)
+        saved_model_path = download_model_version(provider_name, model_id, version_id, target_folder, filename)
         
         if saved_model_path:
             downloaded += 1
             
             # 2. Save metadata.json
-            metadata = fetch_and_save_metadata(version_id, target_folder, filename)
+            metadata = fetch_and_save_metadata(provider_name, model_id, version_id, target_folder, filename)
             
             # 3. Download Preview Image
             if metadata:

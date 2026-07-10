@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from shutil import move, copy2
 
-from civitai import get_model_for_safetensors
 from config import (
     is_dry_run,
     is_verbose,
@@ -84,15 +83,18 @@ def extract_official_model_name(civitai_response: dict) -> str:
     return ""
 
 
-# Return the best folder name for a model, using CivitAI when possible.
+# Return the best folder name for a model, using the resolved provider when possible.
 def get_model_folder_name(lora_file: Path) -> str:
     if lora_file.suffix.lower() != ".safetensors":
         return sanitize_name(lora_file.stem)
 
-    official_name = extract_official_model_name(get_model_for_safetensors(lora_file))
-
-    if official_name:
-        return sanitize_name(official_name)
+    try:
+        from main import fetch_model_info
+        model_info = fetch_model_info(lora_file)
+        if model_info and model_info.name:
+            return sanitize_name(model_info.name)
+    except Exception as e:
+        log_operation(f"Provider lookup failed for {lora_file.name}: {e}")
 
     return sanitize_name(lora_file.stem)
 

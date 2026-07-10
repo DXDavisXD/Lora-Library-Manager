@@ -53,59 +53,70 @@ def run_update_detector(lora_root: Path) -> None:
     updates_found = []
     checked_count = 0
 
+    from providers.registry import resolve_provider, get_provider
+    from config import get_provider_api_key
+
     for idx, path in enumerate(unique_files, 1):
         metadata = load_metadata(path)
-        unwrapped = unwrap_metadata(metadata)
-        if not unwrapped:
+        if not metadata:
             continue
 
-        civitai_model_id = unwrapped.get("modelId")
-        current_version_id = unwrapped.get("id")
+        provider_name = resolve_provider(meta=metadata, filename=path.name)
+        provider = get_provider(provider_name)
 
-        if not civitai_model_id or not current_version_id:
+        if not provider.capabilities.update_check:
+            continue
+
+        # Extract provider-specific model ID and version ID
+        if "provider" in metadata:
+            provider_model_id = metadata.get("provider_model_id")
+            current_version_id = metadata.get("provider_version_id")
+        else:
+            # Legacy fallback
+            from civitai import unwrap_civitai_metadata
+            unwrapped = unwrap_civitai_metadata(metadata)
+            provider_model_id = str(unwrapped.get("modelId") or (unwrapped.get("model") or {}).get("id") or "")
+            current_version_id = str(unwrapped.get("id") or "")
+
+        if not provider_model_id or not current_version_id:
             continue
 
         checked_count += 1
-        model_name = unwrapped.get("model", {}).get("name") or unwrapped.get("name") or path.stem
-        current_version_name = unwrapped.get("name") or "Unknown"
+        model_name = metadata.get("name") or (metadata.get("model") or {}).get("name") or path.stem
+        current_version_name = metadata.get("version_name") or metadata.get("name") or "Unknown"
 
-        print(f"[{checked_count}] Checking '{model_name}' (Current: {current_version_name})...")
+        print(f"[{checked_count}] Checking '{model_name}' (Current: {current_version_name} via {provider_name.title()})...")
 
         try:
-            res = get_model(civitai_model_id)
-            if res.get("ok") and isinstance(res.get("data"), dict):
-                model_data = res["data"]
-                versions = model_data.get("modelVersions", [])
-                if versions:
-                    # Sort versions by ID descending (highest ID is latest version)
-                    versions_sorted = sorted(versions, key=lambda v: v.get("id", 0), reverse=True)
-                    latest_version = versions_sorted[0]
-                    latest_version_id = latest_version.get("id")
+            api_key = get_provider_api_key(provider_name)
+            versions = provider.fetch_model_versions(provider_model_id, api_key=api_key)
+            if versions:
+                # First version in returned list is the latest version
+                latest_version = versions[0]
+                latest_version_id = latest_version.provider_version_id
 
-                    if latest_version_id and latest_version_id != current_version_id:
-                        latest_version_name = latest_version.get("name", "Unknown")
-                        download_url = ""
-                        for f_info in latest_version.get("files", []):
-                            if f_info.get("downloadUrl"):
-                                download_url = f_info["downloadUrl"]
-                                break
+                if latest_version_id and latest_version_id != current_version_id:
+                    latest_version_name = latest_version.version_name or "Unknown"
+                    # Get download URL via capability
+                    download_url = ""
+                    if provider.capabilities.model_download:
+                        download_url = provider.get_download_url(provider_model_id, latest_version_id, api_key=api_key)
 
-                        updates_found.append({
-                            "file_name": path.name,
-                            "model_name": model_name,
-                            "current_version": current_version_name,
-                            "latest_version": latest_version_name,
-                            "download_url": download_url
-                        })
-                        print(f"  -> UPDATE AVAILABLE: New version '{latest_version_name}' found!")
+                    updates_found.append({
+                        "file_name": path.name,
+                        "model_name": model_name,
+                        "current_version": current_version_name,
+                        "latest_version": latest_version_name,
+                        "download_url": download_url
+                    })
+                    print(f"  -> UPDATE AVAILABLE: New version '{latest_version_name}' found!")
             else:
-                error_msg = res.get("message") or "Unknown API error"
-                print(f"  -> Error checking CivitAI: {error_msg}")
+                print(f"  -> No versions returned from {provider_name.title()}.")
 
         except Exception as e:
             print(f"  -> Error checking updates: {e}")
 
-        # Be polite to CivitAI API
+        # Be polite to APIs
         time.sleep(0.5)
 
     print("\n==================================================")
@@ -114,7 +125,7 @@ def run_update_detector(lora_root: Path) -> None:
     print(f"Total checked: {checked_count} models.")
     
     if updates_found:
-        print(f"Updates available: {len(updates_found)} model(s) have new versions on CivitAI.\n")
+        print(f"Updates available: {len(updates_found)} model(s) have new versions.\n")
         for u in updates_found:
             print(f"- {u['model_name']} ({u['file_name']})")
             print(f"  Current: {u['current_version']}")
