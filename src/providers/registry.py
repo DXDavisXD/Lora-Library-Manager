@@ -126,7 +126,7 @@ def detect_from_legacy_fields(meta: dict) -> str | None:
     if "ok" in meta and "data" in meta:
         data = meta.get("data") or {}
 
-    civitai_fields = ("modelId", "id", "trainedWords", "baseModel")
+    civitai_fields = ("modelId", "trainedWords")
     if any(f in data for f in civitai_fields):
         return "civitai"
     return None

@@ -316,6 +316,13 @@ class ArcencielProvider(ProviderBase):
         # ── Download URL (transient — not stored in sidecar) ─────────────────
         download_url = _build_download_url(version_obj)
 
+        trained_words_grouped = []
+        for entry in raw_tags:
+            if isinstance(entry, str):
+                text = entry.split("|", 1)[-1].strip()
+                if text and text not in trained_words_grouped:
+                    trained_words_grouped.append(text)
+
         return ModelInfo(
             provider="arcenciel",
             provider_display_name="Arc en Ciel",
@@ -327,6 +334,7 @@ class ArcencielProvider(ProviderBase):
             description=description,
             base_model=base_model,
             trained_words=trained_words,
+            trained_words_grouped=trained_words_grouped,
             preview_urls=preview_urls,
             tags=tags,
             preferred_weight=None,
@@ -469,25 +477,32 @@ class ArcencielProvider(ProviderBase):
         """
         Return the download URL for a specific version.
 
-        For platform-hosted files, the URL is constructed from the version's
-        ``filePath`` field.  If the file is externally hosted, the
-        ``externalDownloadUrl`` value is returned directly.
+        Arcenciel's CDN path (``/uploads/…``) is not publicly accessible and
+        returns 404.  The stable API download endpoint is used instead:
+        ``GET /api/models/{model_id}/versions/{version_id}/download``
 
-        Because Arcenciel has no ``/api/versions/{id}`` endpoint, the parent
-        model must be fetched when the version data is not already cached.
+        For externally-hosted files the ``externalDownloadUrl`` is returned
+        directly (requires a model fetch to read the version dict).
+
         Both ``model_id`` and ``version_id`` are required.
         """
         if not model_id or not version_id:
             return ""
-        model_obj = self._fetch_model(model_id, api_key=api_key)
-        if not model_obj:
-            return ""
 
-        target_vid = str(version_id)
-        for v in model_obj.get("versions") or []:
-            if str(v.get("id")) == target_vid:
-                return _build_download_url(v)
-        return ""
+        # Check for externalDownloadUrl first (requires model fetch)
+        model_obj = self._fetch_model(model_id, api_key=api_key)
+        if model_obj:
+            target_vid = str(version_id)
+            for v in model_obj.get("versions") or []:
+                if str(v.get("id")) == target_vid:
+                    ext = v.get("externalDownloadUrl")
+                    if ext and isinstance(ext, str) and ext.strip():
+                        return ext.strip()
+                    break
+
+        # Use the stable API download endpoint for platform-hosted files
+        from arcenciel import build_api_url
+        return build_api_url(f"models/{model_id}/versions/{version_id}/download")
 
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
