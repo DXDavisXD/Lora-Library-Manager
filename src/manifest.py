@@ -674,7 +674,7 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
         def _upd(**_kw): pass
 
     _upd(
-        percent=5,
+        percent=0,
         current=0,
         total=total_models,
         message=(
@@ -700,18 +700,7 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
         version_id = m.get("provider_version_id") or m.get("civitai_version_id") or "Unknown"
         sha256 = m.get("sha256")
 
-        # Progress: map this model's position linearly into the 5–85 % budget.
-        # Formula: 5 + (models_done / total_to_download) * 80
-        _dl_done = current_count - already_installed - 1  # how many downloads finished before this one
-        _pct = 5 + int((_dl_done / max(missing_count, 1)) * 80)
         _provider_label = (m.get("provider") or "civitai").replace("civitai", "CivitAI").replace("arcenciel", "Arc en Ciel")
-        _upd(
-            percent=_pct,
-            current=current_count,
-            total=total_models,
-            message=f"[{current_count}/{total_models}] Downloading {filename}",
-            item_name=f"{filename}  •  {_provider_label}",
-        )
 
         try:
             provider_name = m.get("provider")
@@ -819,8 +808,20 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
             })
             print(f"  X Download failed: {e}")
             log_operation(f"Error restoring model {filename}: {e}")
-            
+
         print_detailed_progress(current_count, total_models, downloaded, skipped, failed)
+
+        # Progress: fires AFTER this model fully completes (download + metadata + preview).
+        # Maps completed models linearly into 0–85 %: first done ≈ 5 %, all done = 85 %.
+        _models_done = downloaded + failed
+        _pct = int((_models_done / max(missing_count, 1)) * 85)
+        _upd(
+            percent=_pct,
+            current=current_count,
+            total=total_models,
+            message=f"[{current_count}/{total_models}] Downloaded {filename}",
+            item_name=f"{filename}  •  {_provider_label}",
+        )
         
     summary_report = (
         f"\n==============================================\n"
