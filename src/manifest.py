@@ -666,24 +666,53 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
     failed = 0
     restored_user_data = 0
     failed_details = []
-    
+
+    # Lazy import — safe to call outside a job context (no-op when no job active)
+    try:
+        from jobs import update_job_progress as _upd
+    except ImportError:
+        def _upd(**_kw): pass
+
+    _upd(
+        percent=5,
+        current=0,
+        total=total_models,
+        message=(
+            f"Starting restore — {missing_count} to download, "
+            f"{already_installed} already installed"
+        ),
+    )
+
     print("\n")
     print_detailed_progress(already_installed, total_models, downloaded, skipped, failed, is_first=True)
-    
+
     for m, path in skipped_models:
         sha256 = m.get("sha256")
         u_data = user_data_block.get(sha256)
         if u_data:
             if restore_user_data_sidecar(path.parent, u_data):
                 restored_user_data += 1
-                
+
     current_count = already_installed
     for m in missing_models:
         current_count += 1
         filename = m.get("filename") or "Unknown"
         version_id = m.get("provider_version_id") or m.get("civitai_version_id") or "Unknown"
         sha256 = m.get("sha256")
-        
+
+        # Progress: map this model's position linearly into the 5–85 % budget.
+        # Formula: 5 + (models_done / total_to_download) * 80
+        _dl_done = current_count - already_installed - 1  # how many downloads finished before this one
+        _pct = 5 + int((_dl_done / max(missing_count, 1)) * 80)
+        _provider_label = (m.get("provider") or "civitai").replace("civitai", "CivitAI").replace("arcenciel", "Arc en Ciel")
+        _upd(
+            percent=_pct,
+            current=current_count,
+            total=total_models,
+            message=f"[{current_count}/{total_models}] Downloading {filename}",
+            item_name=f"{filename}  •  {_provider_label}",
+        )
+
         try:
             provider_name = m.get("provider")
             model_id = m.get("provider_model_id")

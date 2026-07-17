@@ -238,41 +238,45 @@ class ImportExistingJob(BaseJob):
         import_existing_library(lora_root)
 
 
-class ExportManifestJob(BaseJob):
-    def __init__(self):
-        super().__init__("Export Manifest", "normal")
+class ExportBackupJob(BaseJob):
+    def __init__(self, backup_name: str = "", comment: str = ""):
+        super().__init__("Export Backup", "normal")
+        self.backup_name = backup_name
+        self.comment = comment
 
     def execute(self, lora_root: Path):
-        update_job_progress(percent=10, message="Packaging manifest JSON...")
+        update_job_progress(percent=10, message="Packaging backup files...")
         from datetime import datetime
         backup_dir = lora_root / "backup"
         backup_dir.mkdir(exist_ok=True)
-        filename = f"backup/{datetime.now().strftime('%d.%m.%Y-%H.%M')}.json"
-        manifest_path = lora_root / filename
+        filename = f"backup/{datetime.now().strftime('%d.%m.%Y-%H.%M')}.llmb"
+        backup_path = lora_root / filename
         
-        from manifest import export_library_manifest
-        export_library_manifest(lora_root, manifest_path)
+        from manifest import export_library_backup
+        export_library_backup(lora_root, backup_path, backup_name=self.backup_name, comment=self.comment)
 
 
-class ImportManifestJob(BaseJob):
+class ImportBackupJob(BaseJob):
     def __init__(self, manifest_filename: str):
-        super().__init__(f"Import Manifest ({manifest_filename})", "normal")
+        super().__init__(f"Import Backup ({manifest_filename})", "normal")
         self.manifest_filename = manifest_filename
 
     def execute(self, lora_root: Path):
-        update_job_progress(percent=5, message="Validating manifest file...")
+        update_job_progress(percent=0, message="Validating backup package...")
         manifest_path = Path(self.manifest_filename)
         if not manifest_path.is_absolute():
             manifest_path = lora_root / manifest_path
-            
-        from manifest import import_library_manifest
-        import_library_manifest(lora_root, manifest_path)
-        
-        update_job_progress(percent=75, message="Organizing library folders...")
+
+        # import_library_backup drives progress from 5 % → 85 % internally
+        # via update_job_progress calls on every model iteration.
+        from manifest import import_library_backup
+        import_library_backup(lora_root, manifest_path, auto_confirm=True)
+
+        update_job_progress(percent=88, message="Organizing library folders...")
         from organizer import organize_library
         organize_library(lora_root, print_summary=False)
-        
-        update_job_progress(percent=90, message="Rebuilding gallery...")
+
+        update_job_progress(percent=94, message="Rebuilding gallery...")
         from main import refresh_gallery
         refresh_gallery(lora_root)
 
