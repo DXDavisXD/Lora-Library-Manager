@@ -87,16 +87,32 @@ def _resolve_model_path_info(model_path: Path) -> tuple[Path, str]:
     return model_folder, model_stem
 
 
-# Return the standard same-basename preview image path for a model folder or file.
+# Return the standard preview image path for a model folder or file (searches for existing preview with any extension).
 def preview_image_path(model_path: Path) -> Path:
     model_folder, model_stem = _resolve_model_path_info(model_path)
+    
+    extensions_to_check = [
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".mp4", ".webm",
+        ".preview.png", ".preview.jpg", ".preview.jpeg", ".preview.webp"
+    ]
+    for ext in extensions_to_check:
+        candidate = model_folder / f"{model_stem}{ext}"
+        if candidate.exists():
+            return candidate
+
+    if model_folder.exists() and model_folder.is_dir():
+        for prev_name in ["preview", "cover", "thumb"]:
+            for ext in [".png", ".jpg", ".jpeg", ".webp", ".gif"]:
+                candidate = model_folder / f"{prev_name}{ext}"
+                if candidate.exists():
+                    return candidate
+
     return model_folder / f"{model_stem}.png"
 
 
 # Check whether a preview image already exists for a model file or folder.
 def preview_image_exists(model_path: Path) -> bool:
-    model_folder, model_stem = _resolve_model_path_info(model_path)
-    return any((model_folder / f"{model_stem}{ext}").exists() for ext in PREVIEW_EXTENSIONS)
+    return preview_image_path(model_path).exists()
 
 
 # Return the metadata file path for a model folder or file.

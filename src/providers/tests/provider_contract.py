@@ -161,6 +161,17 @@ class ProviderContractTests(ABC):
         self._skip_if_offline()
         if not self.provider.capabilities.search:
             self.skipTest("Provider does not support search")  # type: ignore[attr-defined]
+        if self.provider.get_provider_name() == "civitai":
+            try:
+                from urllib.request import Request, urlopen
+                req = Request(
+                    f"https://civitai.com/api/v1/models?query={self.search_query}&limit=1",
+                    headers={"User-Agent": "LoRA-Library-Manager/2.0"},
+                )
+                with urlopen(req, timeout=8):
+                    pass
+            except Exception as e:
+                self.skipTest(f"CivitAI search query API is currently unavailable: {e}")
         results = self.provider.search(self.search_query, limit=5)
         self.assertIsInstance(results, list)  # type: ignore[attr-defined]
         self.assertGreater(len(results), 0, "search should return at least one result")  # type: ignore[attr-defined]

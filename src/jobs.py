@@ -239,27 +239,80 @@ class ImportExistingJob(BaseJob):
 
 
 class ExportBackupJob(BaseJob):
-    def __init__(self, backup_name: str = "", comment: str = ""):
+    def __init__(
+        self,
+        backup_name: str = "",
+        comment: str = "",
+        include_previews: bool = True,
+        include_user_data: bool = True,
+        favorites_only: bool = False,
+        favorite_keys: list[str] | None = None,
+    ):
         super().__init__("Export Backup", "normal")
         self.backup_name = backup_name
         self.comment = comment
+        self.include_previews = include_previews
+        self.include_user_data = include_user_data
+        self.favorites_only = favorites_only
+        self.favorite_keys = favorite_keys or []
 
     def execute(self, lora_root: Path):
-        update_job_progress(percent=10, message="Packaging backup files...")
+        import re
         from datetime import datetime
         backup_dir = lora_root / "backup"
         backup_dir.mkdir(exist_ok=True)
-        filename = f"backup/{datetime.now().strftime('%d.%m.%Y-%H.%M')}.llmb"
-        backup_path = lora_root / filename
+        
+        now = datetime.now()
+        timestamp_str = now.strftime("%d.%m.%Y-%H.%M.%S")
+        
+        clean_name = ""
+        if self.backup_name and self.backup_name.strip():
+            clean_name = re.sub(r'[\\/*?:"<>|]', "", self.backup_name.strip()).strip(". ")
+            
+        if clean_name:
+            base_filename = f"{timestamp_str} - {clean_name}"
+        else:
+            base_filename = timestamp_str
+            self.backup_name = f"Backup {now.strftime('%d.%m.%Y %H:%M:%S')}"
+            
+        candidate_path = backup_dir / f"{base_filename}.llmb"
+        counter = 1
+        while candidate_path.exists():
+            candidate_path = backup_dir / f"{base_filename} ({counter}).llmb"
+            counter += 1
+
+        backup_path = candidate_path.resolve()
+        
+        print(f"\n[Backup System] Creating backup package...")
+        print(f"[Backup System] Target Save Path: {backup_path}")
+        update_job_progress(percent=10, message=f"Packaging backup to {backup_path.name}...")
         
         from manifest import export_library_backup
-        export_library_backup(lora_root, backup_path, backup_name=self.backup_name, comment=self.comment)
+        export_library_backup(
+            lora_root,
+            backup_path,
+            backup_name=self.backup_name,
+            comment=self.comment,
+            include_previews=self.include_previews,
+            include_user_data=self.include_user_data,
+            favorites_only=self.favorites_only,
+            favorite_keys=self.favorite_keys,
+        )
 
 
 class ImportBackupJob(BaseJob):
-    def __init__(self, manifest_filename: str):
+    def __init__(
+        self,
+        manifest_filename: str,
+        download_models: bool = True,
+        restore_previews: bool = True,
+        restore_user_data: bool = True,
+    ):
         super().__init__(f"Import Backup ({manifest_filename})", "normal")
         self.manifest_filename = manifest_filename
+        self.download_models = download_models
+        self.restore_previews = restore_previews
+        self.restore_user_data = restore_user_data
 
     def execute(self, lora_root: Path):
         update_job_progress(percent=0, message="Validating backup package...")
@@ -270,7 +323,14 @@ class ImportBackupJob(BaseJob):
         # import_library_backup drives progress from 5 % → 85 % internally
         # via update_job_progress calls on every model iteration.
         from manifest import import_library_backup
-        import_library_backup(lora_root, manifest_path, auto_confirm=True)
+        import_library_backup(
+            lora_root,
+            manifest_path,
+            auto_confirm=True,
+            download_models=self.download_models,
+            restore_previews=self.restore_previews,
+            restore_user_data=self.restore_user_data,
+        )
 
         update_job_progress(percent=88, message="Organizing library folders...")
         from organizer import organize_library

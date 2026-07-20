@@ -95,6 +95,7 @@ class ModelInfo:
     description: str
     base_model: str     # e.g. "SDXL 1.0", "Pony", "Flux.1 D"
     trained_words: list[str] = field(default_factory=list)
+    trained_words_grouped: list[str] = field(default_factory=list)
     preview_urls: list[str]  = field(default_factory=list)
     tags: list[str]          = field(default_factory=list)
     preferred_weight: float | None = None
@@ -123,6 +124,7 @@ class ModelInfo:
             "description":            self.description,
             "base_model":             self.base_model,
             "trained_words":          self.trained_words,
+            "trainedWords":           self.trained_words_grouped,
             "tags":                   self.tags,
             "preferred_weight":       self.preferred_weight,
             "negative_prompt":        self.negative_prompt,

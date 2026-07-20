@@ -880,6 +880,200 @@ def build_manage_page(lora_root: Path) -> str:
   .activity-log-panel.collapsed .toggle-arrow {{
     transform: rotate(-90deg);
   }}
+
+  /* Custom Backup Dialog Modal Styles */
+  .modal-overlay {{
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease-out;
+  }}
+  .modal-content {{
+    background: #16171a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    width: 460px;
+    max-width: 90vw;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }}
+  .modal-title {{
+    padding: 16px 20px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ffffff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: #1f2023;
+  }}
+  .modal-body {{
+    padding: 20px;
+    color: #9ca3af;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    max-height: 60vh;
+    overflow-y: auto;
+    background: #16171a;
+  }}
+  .modal-footer {{
+    padding: 12px 20px;
+    background: #1f2023;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }}
+  .modal-body ul {{
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+  }}
+  .modal-body li {{
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
+    padding-bottom: 4px;
+  }}
+  .modal-body li span.val {{
+    color: #ffffff;
+    font-weight: 500;
+  }}
+  .modal-body .summary-heading {{
+    font-weight: 600;
+    color: #6366f1;
+    margin-top: 12px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+  }}
+  .btn-cancel {{
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #9ca3af;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }}
+  .btn-cancel:hover {{
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+  }}
+  .btn-confirm {{
+    background: #6366f1;
+    border: none;
+    color: #ffffff;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }}
+  .btn-confirm:hover {{
+    background: #4f46e5;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
+  }}
+  /* Backup/Restore option toggle rows inside modals */
+  .opt-toggle-row {{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(255,255,255,0.05);
+  }}
+  .opt-toggle-row:last-child {{ border-bottom: none; }}
+  .opt-toggle-label {{
+    font-size: 0.88rem;
+    color: #d1d5db;
+    font-weight: 500;
+  }}
+  .opt-toggle-sub {{
+    font-size: 0.76rem;
+    color: #6b7280;
+    margin-top: 1px;
+  }}
+  .opt-toggle-switch {{
+    position: relative;
+    width: 38px;
+    height: 20px;
+    flex-shrink: 0;
+  }}
+  .opt-toggle-switch input {{ display: none; }}
+  .opt-toggle-track {{
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.12);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }}
+  .opt-toggle-track::after {{
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    top: 3px;
+    left: 3px;
+    transition: left 0.2s;
+  }}
+  .opt-toggle-switch input:checked + .opt-toggle-track {{ background: #6366f1; }}
+  .opt-toggle-switch input:checked + .opt-toggle-track::after {{ left: 21px; }}
+  .modal-form-row {{
+    margin-bottom: 10px;
+  }}
+  .modal-form-row label {{
+    display: block;
+    font-size: 0.8rem;
+    color: #9ca3af;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }}
+  .modal-form-row input[type=text],
+  .modal-form-row textarea {{
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: #fff;
+    font-size: 0.88rem;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.15s;
+  }}
+  .modal-form-row input[type=text]:focus,
+  .modal-form-row textarea:focus {{
+    border-color: #6366f1;
+  }}
+  .modal-form-row textarea {{ resize: vertical; min-height: 52px; }}
+  @keyframes fadeIn {{
+    from {{ opacity: 0; }}
+    to {{ opacity: 1; }}
+  }}
+  @keyframes slideUp {{
+    from {{ transform: translateY(20px); opacity: 0; }}
+    to {{ transform: translateY(0); opacity: 1; }}
+  }}
 </style>
 </head>
 <body>
@@ -1093,11 +1287,11 @@ def build_manage_page(lora_root: Path) -> str:
       <div class="panel">
         <div class="panel-header">Backup & Recovery</div>
         <div class="panel-body">
-          <button class="action-btn" onclick="triggerTask('export-manifest')">
+          <button class="action-btn" onclick="openExportModal()">
             <span class="btn-icon">📤</span>
             <span class="btn-label">
-              Export Manifest JSON
-              <span class="btn-sub">Save complete library backup under backup/</span>
+              Export Backup Package (.llmb)
+              <span class="btn-sub">Choose what to include before saving</span>
             </span>
           </button>
           
@@ -1110,7 +1304,7 @@ def build_manage_page(lora_root: Path) -> str:
               
               <!-- Custom File Selection -->
               <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
-                <input type="text" id="manual-backup-file-path" class="form-input" placeholder="Or select a custom backup JSON file..." style="flex: 1;">
+                <input type="text" id="manual-backup-file-path" class="form-input" placeholder="Or select a custom backup package (.llmb) file..." style="flex: 1;">
                 <button class="btn-secondary-outline" onclick="browseBackupFile()" type="button" style="padding: 8px 12px;">Browse...</button>
               </div>
 
@@ -1382,19 +1576,100 @@ def build_manage_page(lora_root: Path) -> str:
     triggerTask('duplicate-finder', {{ strategy: strategy }});
   }}
 
+  let pendingRestorePath = "";
+
   function restoreSelectedBackup() {{
     const manualFile = document.getElementById('manual-backup-file-path').value.trim();
+    let manifestPath = "";
     if (manualFile) {{
-      triggerTask('import-manifest', {{ manifest_path: manualFile }});
-      return;
+      manifestPath = manualFile;
+    }} else {{
+      const backupSelect = document.getElementById('backup-select');
+      const val = backupSelect.value;
+      if (!val) {{
+        toast('Please select a backup first', 'error');
+        return;
+      }}
+      manifestPath = `backup/${{val}}`;
     }}
-    const backupSelect = document.getElementById('backup-select');
-    const val = backupSelect.value;
-    if (!val) {{
-      toast('Please select a backup first', 'error');
-      return;
+    
+    pendingRestorePath = manifestPath;
+    
+    toast('Fetching backup summary...', 'info');
+    fetch('/api/backup_summary', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{ manifest_path: manifestPath }})
+    }})
+    .then(r => {{
+      if (!r.ok) {{
+        return r.text().then(t => {{ throw new Error(t); }});
+      }}
+      return r.json();
+    }})
+    .then(data => {{
+      showBackupModal(data);
+    }})
+    .catch(err => {{
+      toast('Failed to load backup summary: ' + err.message, 'error');
+    }});
+  }}
+
+  function showBackupModal(data) {{
+    const modal = document.getElementById('backup-modal');
+    const body = document.getElementById('backup-modal-body');
+    
+    let providersHtml = "";
+    if (data.providers && data.providers.length > 0) {{
+      providersHtml = data.providers.map(p => `• ${{p}}`).join('<br>');
+    }} else {{
+      providersHtml = "None";
     }}
-    triggerTask('import-manifest', {{ manifest_path: `backup/${{val}}` }});
+    
+    body.innerHTML = `
+      <div class="summary-heading">Backup Content</div>
+      <ul>
+        <li><span>Backup Name</span><span class="val">${{data.backup_name || '(no name)'}}</span></li>
+        ${{data.comment ? `<li><span>Comment</span><span class="val">${{data.comment}}</span></li>` : ''}}
+        <li><span>Created At</span><span class="val">${{data.created_at}}</span></li>
+        <li><span>Total Models</span><span class="val">${{data.model_count}}</span></li>
+        <li><span>Preview Images</span><span class="val">${{data.preview_count}}</span></li>
+        <li><span>Manager Version</span><span class="val">${{data.manager_version}}</span></li>
+      </ul>
+      
+      <div class="summary-heading">Target Providers</div>
+      <div style="margin-top:4px; font-weight:500; color:#fff; font-size:0.9rem; line-height:1.4;">
+        ${{providersHtml}}
+      </div>
+      
+      <div class="summary-heading">Match Details</div>
+      <ul>
+        <li><span>Already Installed (will skip)</span><span class="val" style="color:var(--success);">${{data.already_installed}}</span></li>
+        <li><span>Missing (will download)</span><span class="val" style="color:var(--warning);">${{data.missing_count}}</span></li>
+      </ul>
+    `;
+    
+    modal.style.display = 'flex';
+  }}
+
+  function closeBackupModal() {{
+    const modal = document.getElementById('backup-modal');
+    modal.style.display = 'none';
+  }}
+
+  function proceedWithRestore() {{
+    closeBackupModal();
+    if (pendingRestorePath) {{
+      const dlModels   = document.getElementById('opt-download-models').checked;
+      const rstPrev    = document.getElementById('opt-restore-previews').checked;
+      const rstUData   = document.getElementById('opt-restore-user-data').checked;
+      triggerTask('import-backup', {{
+        manifest_path:      pendingRestorePath,
+        download_models:    dlModels   ? 'true' : 'false',
+        restore_previews:   rstPrev    ? 'true' : 'false',
+        restore_user_data:  rstUData   ? 'true' : 'false',
+      }});
+    }}
   }}
 
   async function selectPath(type) {{
@@ -1780,6 +2055,145 @@ def build_manage_page(lora_root: Path) -> str:
         updateIcons(newTheme);
       }});
     }}
+  }});
+</script>
+<!-- Backup Restore Confirmation Modal -->
+<div id="backup-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-content" style="width:500px;">
+    <div class="modal-title">Backup Restore Summary</div>
+    <div id="backup-modal-body" class="modal-body">
+      <!-- Injected summary details -->
+    </div>
+    <!-- Restore Options -->
+    <div class="modal-body" style="border-top:1px solid rgba(255,255,255,0.07); padding-top:14px; margin-top:0;">
+      <div class="summary-heading" style="margin-top:0;">Restore Options</div>
+      <div class="opt-toggle-row">
+        <div>
+          <div class="opt-toggle-label">Download model files</div>
+          <div class="opt-toggle-sub">Download missing .safetensors from provider</div>
+        </div>
+        <label class="opt-toggle-switch">
+          <input type="checkbox" id="opt-download-models" checked>
+          <div class="opt-toggle-track"></div>
+        </label>
+      </div>
+      <div class="opt-toggle-row">
+        <div>
+          <div class="opt-toggle-label">Restore preview images</div>
+          <div class="opt-toggle-sub">Extract embedded previews from the backup</div>
+        </div>
+        <label class="opt-toggle-switch">
+          <input type="checkbox" id="opt-restore-previews" checked>
+          <div class="opt-toggle-track"></div>
+        </label>
+      </div>
+      <div class="opt-toggle-row">
+        <div>
+          <div class="opt-toggle-label">Restore user data</div>
+          <div class="opt-toggle-sub">Ratings, notes, collections, trigger words</div>
+        </div>
+        <label class="opt-toggle-switch">
+          <input type="checkbox" id="opt-restore-user-data" checked>
+          <div class="opt-toggle-track"></div>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeBackupModal()">Cancel</button>
+      <button class="btn-confirm" onclick="proceedWithRestore()">Proceed with Restore</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export Backup Options Modal -->
+<div id="export-modal" class="modal-overlay" style="display: none;">
+  <div class="modal-content" style="width:460px;">
+    <div class="modal-title">📤 Export Backup Options</div>
+    <div class="modal-body">
+      <div class="modal-form-row">
+        <label for="export-backup-name">Backup Name</label>
+        <input type="text" id="export-backup-name" placeholder="e.g. My LoRA Collection">
+      </div>
+      <div class="modal-form-row">
+        <label for="export-comment">Comment (optional)</label>
+        <textarea id="export-comment" placeholder="Any notes about this backup..."></textarea>
+      </div>
+      <div class="summary-heading" style="margin-top:14px;">What to Include</div>
+      <div class="opt-toggle-row">
+        <div>
+          <div class="opt-toggle-label">Include preview images</div>
+          <div class="opt-toggle-sub">Embeds thumbnail images inside the .llmb archive</div>
+        </div>
+        <label class="opt-toggle-switch">
+          <input type="checkbox" id="opt-include-previews" checked>
+          <div class="opt-toggle-track"></div>
+        </label>
+      </div>
+      <div class="opt-toggle-row">
+        <div>
+          <div class="opt-toggle-label">Include user data</div>
+          <div class="opt-toggle-sub">Ratings, notes, collections, trigger words</div>
+        </div>
+        <label class="opt-toggle-switch">
+          <input type="checkbox" id="opt-include-user-data" checked>
+          <div class="opt-toggle-track"></div>
+        </label>
+      </div>
+      <div class="opt-toggle-row">
+        <div>
+          <div class="opt-toggle-label">Favorites only</div>
+          <div class="opt-toggle-sub">Only export models with a rating or in a collection</div>
+        </div>
+        <label class="opt-toggle-switch">
+          <input type="checkbox" id="opt-favorites-only">
+          <div class="opt-toggle-track"></div>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeExportModal()">Cancel</button>
+      <button class="btn-confirm" onclick="submitExport()">Export Now</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openExportModal() {{
+    document.getElementById('export-backup-name').value = '';
+    document.getElementById('export-comment').value = '';
+    document.getElementById('export-modal').style.display = 'flex';
+  }}
+  function closeExportModal() {{
+    document.getElementById('export-modal').style.display = 'none';
+  }}
+  function submitExport() {{
+    closeExportModal();
+    const name    = document.getElementById('export-backup-name').value.trim();
+    const comment = document.getElementById('export-comment').value.trim();
+    const incPrev = document.getElementById('opt-include-previews').checked;
+    const incUD   = document.getElementById('opt-include-user-data').checked;
+    const favOnly = document.getElementById('opt-favorites-only').checked;
+    let favKeys = [];
+    try {{
+      favKeys = JSON.parse(localStorage.getItem('lora_gallery_favorites') || '[]');
+    }} catch (e) {{
+      favKeys = [];
+    }}
+    triggerTask('export-backup', {{
+      backup_name:      name,
+      comment:          comment,
+      include_previews: incPrev ? 'true' : 'false',
+      include_user_data: incUD  ? 'true' : 'false',
+      favorites_only:   favOnly ? 'true' : 'false',
+      favorite_keys:    JSON.stringify(favKeys),
+    }});
+  }}
+  // Close modals on backdrop click
+  document.getElementById('export-modal').addEventListener('click', function(e) {{
+    if (e.target === this) closeExportModal();
+  }});
+  document.getElementById('backup-modal').addEventListener('click', function(e) {{
+    if (e.target === this) closeBackupModal();
   }});
 </script>
 </body>

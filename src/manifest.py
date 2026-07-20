@@ -83,7 +83,17 @@ def get_metadata_extras(path: Path, u_data: dict) -> dict:
 
 
 # Export the library backup package (.llmb)
-def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: set[str] | None = None, backup_name: str | None = None, comment: str | None = None) -> Path:
+def export_library_backup(
+    lora_root: Path,
+    output_file: Path,
+    favorite_hashes: set[str] | None = None,
+    backup_name: str | None = None,
+    comment: str | None = None,
+    include_previews: bool = True,
+    include_user_data: bool = True,
+    favorites_only: bool = False,
+    favorite_keys: list[str] | None = None,
+) -> Path:
     print("Scanning library files for export...")
     
     lora_files = []
@@ -100,6 +110,50 @@ def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: s
             seen.add(resolved)
             unique_files.append(path)
             
+    # If favorites_only, build the allowed hash set matching favorites strictly
+    if favorites_only and favorite_hashes is None:
+        fav_set: set[str] = set()
+        fav_keys_lower = set(str(k).lower() for k in (favorite_keys or []) if k)
+
+        for path in unique_files:
+            meta = load_metadata(path)
+            sha = get_sha256_from_metadata(meta, path.name)
+            sha_lower = sha.lower() if sha else ""
+            
+            is_fav = False
+            
+            # 1. Check if hash, filename, stem, or relative path matches localStorage favorites
+            try:
+                rel_path_str = str(path.relative_to(lora_root)).lower()
+            except Exception:
+                rel_path_str = ""
+
+            if (sha_lower and sha_lower in fav_keys_lower) or \
+               (path.name.lower() in fav_keys_lower) or \
+               (path.stem.lower() in fav_keys_lower) or \
+               (rel_path_str and rel_path_str in fav_keys_lower):
+                is_fav = True
+
+            # 2. Check user_data.json sidecar specifically for is_favorite or "Favorites" collection
+            udp = path.parent / "user_data.json"
+            if not is_fav and udp.exists():
+                try:
+                    with udp.open("r", encoding="utf-8") as _f:
+                        ud = json.load(_f)
+                    
+                    is_fav_flag = bool(ud.get("is_favorite") or ud.get("favorite"))
+                    colls = [str(c).lower() for c in ud.get("collections", []) if c]
+                    
+                    if is_fav_flag or "favorites" in colls:
+                        is_fav = True
+                except Exception:
+                    pass
+                    
+            if is_fav and sha:
+                fav_set.add(sha)
+
+        favorite_hashes = fav_set
+
     models = []
     user_data_dict = {}
     exported_models_count = 0
@@ -109,28 +163,22 @@ def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: s
     
     for path in unique_files:
         metadata = load_metadata(path)
-        unwrapped = unwrap_metadata(metadata)
-        
         sha256 = get_sha256_from_metadata(metadata, path.name)
-        if not sha256:
-            print(f"Computing hash for {path.name} (fallback)...")
-            sha256 = compute_file_sha256(path)
-            
-        if not sha256:
+        
+        # If favorites_only, skip models that are not in favorite_hashes
+        if favorite_hashes is not None and sha256 not in favorite_hashes:
             continue
             
-        if favorite_hashes is not None:
-            if sha256 not in favorite_hashes and path.name not in favorite_hashes:
-                continue
-                
-        from providers.registry import resolve_provider, get_provider
-        provider_name = resolve_provider(meta=metadata, sha256=sha256, filename=path.name)
+        exported_models_count += 1
+        
+        # Determine provider and IDs
+        provider_name = (metadata.get("provider") if metadata else None) or "civitai"
+        unwrapped = metadata.get("unwrapped") if (metadata and isinstance(metadata.get("unwrapped"), dict)) else {}
         
         provider_model_id = None
         provider_version_id = None
         
-        if metadata and "provider" in metadata:
-            provider_name = metadata.get("provider", provider_name)
+        if metadata:
             provider_model_id = metadata.get("provider_model_id")
             provider_version_id = metadata.get("provider_version_id")
             
@@ -157,6 +205,7 @@ def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: s
         if not provider_model_id or not provider_version_id:
             try:
                 from config import get_provider_api_key
+                from providers.registry import get_provider
                 provider = get_provider(provider_name)
                 if provider.capabilities.hash_lookup:
                     api_key = get_provider_api_key(provider_name)
@@ -169,6 +218,7 @@ def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: s
 
         # Set provider display name
         try:
+            from providers.registry import get_provider
             provider_instance = get_provider(provider_name)
             provider_display_name = provider_instance.presentation.display_name
         except Exception:
@@ -193,43 +243,51 @@ def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: s
         rel_path_str = relative_path.as_posix()
         
         model_entry = {
+            "name": path.stem,
             "filename": path.name,
             "relative_path": rel_path_str,
+            "sha256": sha256,
             "provider": provider_name,
+            "provider_name": provider_display_name,
             "provider_model_id": provider_model_id,
             "provider_version_id": provider_version_id,
-            "creator": creator,
             "base_model": base_model,
-            "sha256": sha256
+            "creator": creator
         }
         models.append(model_entry)
-        exported_models_count += 1
         
-        user_data_path = path.parent / "user_data.json"
-        u_data = {}
-        if user_data_path.exists():
-            try:
-                with user_data_path.open("r", encoding="utf-8") as f:
-                    u_data = json.load(f)
-            except Exception as e:
-                log_operation(f"Error reading user_data sidecar for {path.name}: {e}")
-
-        meta_extras = get_metadata_extras(path, u_data)
-        
-        user_data_dict[sha256] = {
-            "rating": u_data.get("rating", 0),
-            "collections": u_data.get("collections", []),
-            "notes": u_data.get("notes", ""),
-            "personal_trigger_words": u_data.get("personal_trigger_words", []),
-            "metadata_extras": meta_extras
-        }
-        exported_user_data_count += 1
+        # Read user_data.json if enabled
+        if include_user_data:
+            user_data_path = path.parent / "user_data.json"
+            if user_data_path.exists():
+                try:
+                    with user_data_path.open("r", encoding="utf-8") as f:
+                        ud_json = json.load(f)
+                    user_data_dict[sha256] = ud_json
+                    exported_user_data_count += 1
+                except Exception as e:
+                    log_operation(f"Error reading {user_data_path} for backup: {e}")
+            else:
+                user_data_dict[sha256] = {}
+        else:
+            # Add metadata_extras if present
+            meta_extras = metadata.get("metadata_extras") if metadata else None
+            user_data_dict[sha256] = {
+                "personal_trigger_words": [],
+                "preferred_weight": 1.0,
+                "negative_prompt": "",
+                "notes": "",
+                "rating": 0,
+                "collections": [],
+                "metadata_extras": meta_extras
+            }
         
         # Check for local preview
-        from downloader import preview_image_path
-        local_preview = preview_image_path(path)
-        if local_preview.exists():
-            previews_to_export.append((sha256, local_preview))
+        if include_previews:
+            from downloader import preview_image_path
+            local_preview = preview_image_path(path)
+            if local_preview.exists():
+                previews_to_export.append((sha256, local_preview))
                 
     backup_info = {
         "schema_version": 2,
@@ -302,18 +360,23 @@ def export_library_backup(lora_root: Path, output_file: Path, favorite_hashes: s
             z.writestr(zip_path, img_bytes)
         z.writestr("checksums.json", checksums_bytes)
         
+    abs_save_path = str(output_file.resolve())
     summary_msg = (
         f"Export Complete\n\n"
         f"Models: {exported_models_count}\n"
-        f"User Data: {'Included' if exported_user_data_count > 0 else 'None'}\n"
-        f"Saved to:\n{output_file.name}"
+        f"User Data: {'Included' if include_user_data and exported_user_data_count > 0 else 'Not included'}\n"
+        f"Previews: {'Included (' + str(len(previews_to_export)) + ')' if include_previews else 'Not included'}\n"
+        f"Saved to: {abs_save_path}"
     )
     print(f"\n==============================================")
+    print(f"[Backup System] Backup file saved to:")
+    print(f"  --> {abs_save_path}")
+    print(f"==============================================")
     print(summary_msg)
     print(f"==============================================")
     
     log_operation(
-        f"Backup package exported successfully to {output_file.name} | "
+        f"Backup package exported successfully to {abs_save_path} | "
         f"Models: {exported_models_count}, User Data Entries: {exported_user_data_count}"
     )
     
@@ -495,7 +558,14 @@ def sync_metadata_extras_to_file(model_path: Path, metadata_extras: dict) -> Non
 
 
 # Import/Restore the library backup package (.llmb) or legacy manifest (.json)
-def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool = False) -> None:
+def import_library_backup(
+    lora_root: Path,
+    backup_file: Path,
+    auto_confirm: bool = False,
+    download_models: bool = True,
+    restore_previews: bool = True,
+    restore_user_data: bool = True,
+) -> None:
     if not backup_file.exists():
         print(f"Error: Backup file '{backup_file}' does not exist.")
         return
@@ -689,7 +759,7 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
     for m, path in skipped_models:
         sha256 = m.get("sha256")
         u_data = user_data_block.get(sha256)
-        if u_data:
+        if u_data and restore_user_data:
             if restore_user_data_sidecar(path.parent, u_data):
                 restored_user_data += 1
 
@@ -742,6 +812,38 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
 
             print(f"\nDownloading {filename} ({provider_name.title()} Version ID: {version_id})...")
             
+            if not download_models:
+                # Structure-only: restore metadata and previews without downloading the model file
+                print(f"  (Skipping download — structure-only mode)")
+                # Still restore preview from zip if requested
+                if restore_previews and is_llmb:
+                    m_relative_path = m.get("relative_path")
+                    if m_relative_path:
+                        target_folder = (lora_root / m_relative_path).parent
+                        target_folder.mkdir(parents=True, exist_ok=True)
+                        try:
+                            with zipfile.ZipFile(backup_file, "r") as z:
+                                preview_prefix = f"previews/{sha256}."
+                                for zip_name in z.namelist():
+                                    if zip_name.lower().startswith(preview_prefix.lower()):
+                                        suffix = Path(zip_name).suffix
+                                        stem = Path(m_relative_path).stem
+                                        preview_dest = target_folder / f"{stem}{suffix}"
+                                        preview_dest.write_bytes(z.read(zip_name))
+                                        log_operation(f"Restored preview (structure-only): {preview_dest.name}")
+                                        break
+                        except Exception as pe:
+                            log_operation(f"Preview restore failed for {filename}: {pe}")
+                if restore_user_data and sha256:
+                    u_data = user_data_block.get(sha256)
+                    if u_data and m.get("relative_path"):
+                        target_folder = (lora_root / m.get("relative_path")).parent
+                        target_folder.mkdir(parents=True, exist_ok=True)
+                        if restore_user_data_sidecar(target_folder, u_data):
+                            restored_user_data += 1
+                downloaded += 1  # count as "processed" for progress
+                continue
+
             # Determine target folder
             m_relative_path = m.get("relative_path")
             if m_relative_path:
@@ -769,7 +871,7 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
             metadata = fetch_and_save_metadata(provider_name, model_id, version_id, target_folder, saved_model_path.name)
             
             preview_restored = False
-            if is_llmb:
+            if restore_previews and is_llmb:
                 try:
                     with zipfile.ZipFile(backup_file, "r") as z:
                         preview_prefix = f"previews/{sha256}."
@@ -789,7 +891,7 @@ def import_library_backup(lora_root: Path, backup_file: Path, auto_confirm: bool
                 download_preview_if_missing(saved_model_path, metadata)
                 
             u_data = user_data_block.get(sha256)
-            if u_data:
+            if u_data and restore_user_data:
                 if restore_user_data_sidecar(target_folder, u_data):
                     restored_user_data += 1
                 

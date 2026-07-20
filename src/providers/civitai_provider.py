@@ -117,15 +117,13 @@ class CivitaiProvider(ProviderBase):
         trained_words: list[str] = []
         for entry in raw_words:
             if isinstance(entry, str):
-                for w in entry.split(","):
-                    w = w.strip()
-                    if w:
-                        trained_words.append(w)
+                entry_clean = entry.strip()
+                if entry_clean:
+                    trained_words.append(entry_clean)
             elif isinstance(entry, list):
-                for w in entry:
-                    w = str(w).strip()
-                    if w:
-                        trained_words.append(w)
+                entry_str = ", ".join(str(w).strip() for w in entry if str(w).strip())
+                if entry_str:
+                    trained_words.append(entry_str)
 
         # ── Tags ──────────────────────────────────────────────────────────────
         tags: list[str] = []
@@ -192,6 +190,7 @@ class CivitaiProvider(ProviderBase):
             description=description,
             base_model=base_model,
             trained_words=trained_words,
+            trained_words_grouped=[entry.strip() for entry in raw_words if isinstance(entry, str) and entry.strip()],
             preview_urls=preview_urls,
             tags=tags,
             preferred_weight=preferred_weight,

@@ -142,6 +142,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_select_model_file()
         elif path == "/api/select_backup_file":
             self.handle_select_backup_file()
+        elif path == "/api/backup_summary":
+            self.handle_backup_summary()
         else:
             self.send_error_response(404, "Not Found")
 
@@ -933,13 +935,15 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_success_response({"ok": success})
 
     def handle_get_backups(self):
-        """List backup manifest files stored in the backup/ directory."""
+        """List backup files stored in the backup/ directory."""
         try:
             backup_dir = self.lora_root / "backup"
             backups = []
             if backup_dir.exists() and backup_dir.is_dir():
+                # List both .llmb packages and legacy .json manifests
+                globbed = list(backup_dir.glob("*.llmb")) + list(backup_dir.glob("*.json"))
                 backups = sorted(
-                    [b.name for b in backup_dir.glob("*.json")],
+                    [b.name for b in globbed],
                     key=lambda x: (backup_dir / x).stat().st_mtime,
                     reverse=True
                 )
@@ -992,14 +996,43 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 job = jobs.MigrationPreviewJob()
             elif action == "import-existing":
                 job = jobs.ImportExistingJob()
-            elif action == "export-manifest":
-                job = jobs.ExportManifestJob()
-            elif action == "import-manifest":
+            elif action in ("export-backup", "export-manifest"):
+                backup_name = query_params.get("backup_name", [""])[0]
+                comment = query_params.get("comment", [""])[0]
+                fav_keys_raw = query_params.get("favorite_keys", ["[]"])[0]
+                try:
+                    favorite_keys = json.loads(fav_keys_raw)
+                    if not isinstance(favorite_keys, list):
+                        favorite_keys = []
+                except Exception:
+                    favorite_keys = []
+
+                # Boolean flags: any value other than the string "false" is treated as True
+                def _bool(key, default=True):
+                    raw = query_params.get(key, [str(default).lower()])[0].lower()
+                    return raw != "false"
+                job = jobs.ExportBackupJob(
+                    backup_name=backup_name,
+                    comment=comment,
+                    include_previews=_bool("include_previews"),
+                    include_user_data=_bool("include_user_data"),
+                    favorites_only=_bool("favorites_only", default=False),
+                    favorite_keys=favorite_keys,
+                )
+            elif action in ("import-backup", "import-manifest"):
                 filename = query_params.get("manifest_path", [""])[0]
                 if not filename:
                     self.send_error_response(400, "Missing manifest_path parameter")
                     return
-                job = jobs.ImportManifestJob(manifest_filename=filename)
+                def _bool(key, default=True):
+                    raw = query_params.get(key, [str(default).lower()])[0].lower()
+                    return raw != "false"
+                job = jobs.ImportBackupJob(
+                    manifest_filename=filename,
+                    download_models=_bool("download_models"),
+                    restore_previews=_bool("restore_previews"),
+                    restore_user_data=_bool("restore_user_data"),
+                )
             elif action == "process-single-file":
                 file_path = query_params.get("file_path", [""])[0]
                 if not file_path:
@@ -1090,8 +1123,8 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
             root.attributes("-topmost", True)
             
             file_path = filedialog.askopenfilename(
-                title="Select Backup JSON File",
-                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+                title="Select Backup Package File",
+                filetypes=[("Backup packages", "*.llmb"), ("JSON files", "*.json"), ("All files", "*.*")]
             )
             root.destroy()
             
@@ -1114,6 +1147,125 @@ class GalleryHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps({"status": "error", "message": message}).encode('utf-8'))
+
+    def handle_backup_summary(self):
+        import zipfile
+        import hashlib
+        from manifest import load_metadata, get_sha256_from_metadata, unwrap_metadata
+        
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            params = json.loads(post_data) if post_data else {}
+            
+            manifest_path_str = params.get("manifest_path", "")
+            if not manifest_path_str:
+                self.send_error_response(400, "Missing manifest_path parameter")
+                return
+                
+            manifest_path = Path(manifest_path_str)
+            if not manifest_path.is_absolute():
+                manifest_path = self.lora_root / manifest_path
+                
+            if not manifest_path.exists():
+                self.send_error_response(404, f"Backup file not found at: {manifest_path}")
+                return
+                
+            is_llmb = zipfile.is_zipfile(manifest_path)
+            
+            # Load metadata
+            if is_llmb:
+                with zipfile.ZipFile(manifest_path, "r") as z:
+                    backup_data = json.loads(z.read("backup.json").decode("utf-8"))
+                    models_list = json.loads(z.read("library_manifest.json").decode("utf-8"))
+                    
+                    backup_name = backup_data.get("backup_name", "")
+                    comment = backup_data.get("comment", "")
+                    created_at = backup_data.get("created_at", "N/A")
+                    if created_at != "N/A":
+                        try:
+                            created_at = created_at.split("T")[0]
+                        except Exception:
+                            pass
+                    providers = backup_data.get("providers", [])
+                    preview_count = sum(1 for name in z.namelist() if name.lower().startswith("previews/"))
+                    manager_version = backup_data.get("manager_version", "N/A")
+            else:
+                with manifest_path.open("r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+                models_list = manifest.get("models", [])
+                backup_name = "Legacy Snapshot"
+                comment = ""
+                created_at = manifest.get("generated_at", "N/A")
+                if created_at != "N/A":
+                    try:
+                        created_at = created_at.split("T")[0]
+                    except Exception:
+                        pass
+                providers = list(set(m.get("provider", "civitai") for m in models_list))
+                preview_count = 0
+                manager_version = manifest.get("manager_version", "N/A")
+                
+            total_models = len(models_list)
+            
+            # Scan local library to count installed/missing models
+            local_models = []
+            for ext in LORA_EXTENSIONS:
+                for path in self.lora_root.rglob(f"*{ext}"):
+                    if is_lora_file(path):
+                        metadata = load_metadata(path)
+                        sha256 = get_sha256_from_metadata(metadata, path.name)
+                        if metadata and "provider" in metadata:
+                            provider_model_id = metadata.get("provider_model_id")
+                            provider_version_id = metadata.get("provider_version_id")
+                        else:
+                            unwrapped = unwrap_metadata(metadata)
+                            provider_model_id = unwrapped.get("modelId") or (unwrapped.get("model") or {}).get("id")
+                            provider_version_id = unwrapped.get("id")
+                        
+                        local_models.append({
+                            "sha256": sha256.lower() if sha256 else "",
+                            "version_id": str(provider_version_id) if provider_version_id is not None else "",
+                            "filename": path.name.lower()
+                        })
+                        
+            def find_local_match(manifest_model):
+                m_sha256 = manifest_model.get("sha256", "").lower()
+                m_version_id = manifest_model.get("provider_version_id") or manifest_model.get("civitai_version_id")
+                m_filename = manifest_model.get("filename", "").lower()
+                if m_sha256:
+                    for lm in local_models:
+                        if lm["sha256"] == m_sha256:
+                            return True
+                if m_version_id:
+                    m_version_str = str(m_version_id)
+                    for lm in local_models:
+                        if lm["version_id"] == m_version_str:
+                            return True
+                if m_filename:
+                    for lm in local_models:
+                        if lm["filename"] == m_filename:
+                            return True
+                return False
+                
+            already_installed = sum(1 for m in models_list if find_local_match(m))
+            missing_count = total_models - already_installed
+            
+            summary_data = {
+                "backup_name": backup_name,
+                "comment": comment,
+                "created_at": created_at,
+                "model_count": total_models,
+                "providers": [p.title() for p in providers],
+                "preview_count": preview_count,
+                "manager_version": manager_version,
+                "already_installed": already_installed,
+                "missing_count": missing_count
+            }
+            
+            self.send_success_response(summary_data)
+        except Exception as e:
+            self.send_error_response(500, f"Error reading backup summary: {str(e)}")
 
     def do_OPTIONS(self):
         self.send_response(200)

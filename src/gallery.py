@@ -229,6 +229,25 @@ def parse_trigger_groups(metadata: dict) -> list[dict]:
         else:
             return []
 
+    # Check if this is a flat list of individual tags (no commas in any string)
+    is_flat_list = True
+    if trained_words:
+        for item in trained_words:
+            if isinstance(item, str) and "," in item:
+                is_flat_list = False
+                break
+    else:
+        is_flat_list = False
+
+    if is_flat_list:
+        words = [w.strip() for w in trained_words if isinstance(w, str) and w.strip()]
+        if not words:
+            return []
+        return [{
+            "title": "Trigger Words",
+            "words": words
+        }]
+
     priority_keywords = [
         "outfit", "cosplay", "costume", "dress", "uniform", "swimsuit", "bikini", 
         "lingerie", "kimono", "armor", "hoodie", "suit", "sweater", "vest", 
@@ -797,22 +816,26 @@ def build_gallery_card(group: dict, output_path: Path) -> str:
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                     </svg>
                 </button>
-                {f'''
-                <div class="creator-badge" onclick="filterByCreator(event, '{escape_text(group.get("creator", ""))}')">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
-                        <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
-                        <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
-                        <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
-                        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
-                    </svg>
-                    {escape_text(group.get("creator", ""))}
+                <div class="preview-top-bar">
+                    <div class="card-provider-badge-container" style="pointer-events: auto;" onclick="filterByProvider(event, '{latest_p_name}')">
+                        <span class="provider-badge" style="background: {accent_color}26; color: {accent_color}; border: 1px solid {accent_color}4d; cursor: pointer; pointer-events: auto; font-size: 9.5px; padding: 3px 8px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; border-radius: 20px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);" title="Metadata Source: {display_name} - Click to filter">
+                            {icon} {display_name}
+                        </span>
+                    </div>
+                    {f'''
+                    <div class="creator-badge" onclick="filterByCreator(event, '{escape_text(group.get("creator", ""))}')">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                            <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                            <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                            <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                            <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+                        </svg>
+                        {escape_text(group.get("creator", ""))}
+                    </div>
+                    ''' if group.get("creator") else ''}
                 </div>
-                ''' if group.get("creator") else ''}
-                <div class="card-provider-badge-container" style="position: absolute; bottom: 12px; left: 12px; z-index: 5;" onclick="filterByProvider(event, '{latest_p_name}')">
-                    <span class="provider-badge" style="background: {accent_color}26; color: {accent_color}; border: 1px solid {accent_color}4d; cursor: pointer; pointer-events: auto; font-size: 9px; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; border-radius: 4px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);" title="Metadata Source: {display_name} - Click to filter">
-                        {icon} {display_name}
-                    </span>
+                <div class="preview-bottom-bar">
                 </div>
                 <div class="preview-feedback">Triggers Copied!</div>
             </div>
@@ -1317,7 +1340,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             display: flex;
             align-items: center;
             gap: 12px;
-            overflow: clip;
+            overflow: visible;
         }}
 
         /* Shrinkable center region (search + filter selects) */
@@ -1717,11 +1740,8 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             transform: scale(1.04);
         }}
 
-        /* Subtle artist/creator badge — top-left of the preview image */
+        /* Subtle artist/creator badge — inside the preview-top-bar container */
         .creator-badge {{
-            position: absolute;
-            top: 12px;
-            left: 12px;
             display: flex;
             align-items: center;
             gap: 4px;
@@ -1742,7 +1762,6 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             white-space: nowrap;
             text-overflow: ellipsis;
             opacity: 0.85;
-            z-index: 5;
             transition: all 0.2s ease;
         }}
 
@@ -2794,14 +2813,37 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
 
 
 
-        .card-indicators {{
+        .preview-top-bar {{
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 54px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            z-index: 5;
+            pointer-events: none;
+        }}
+
+        .preview-bottom-bar {{
             position: absolute;
             bottom: 12px;
+            left: 12px;
             right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            flex-wrap: wrap-reverse;
+            gap: 8px;
+            z-index: 5;
+            pointer-events: none;
+        }}
+
+        .card-indicators {{
             display: flex;
             gap: 4px;
             pointer-events: none;
-            z-index: 5;
         }}
 
         .indicator-badge {{
@@ -6358,7 +6400,10 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         // Card Indicator drawing helper
         function updateCardIndicators(card, notes, personalTriggers, rating, collections) {{
             const previewDiv = card.querySelector(".preview");
-            let indicatorsContainer = previewDiv.querySelector(".card-indicators");
+            const bottomBar = previewDiv.querySelector(".preview-bottom-bar");
+            if (!bottomBar) return;
+            
+            let indicatorsContainer = bottomBar.querySelector(".card-indicators");
             
             const hasNotes = notes && notes.trim() !== "";
             const hasTriggers = personalTriggers && personalTriggers.length > 0;
@@ -6372,7 +6417,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
             if (!indicatorsContainer) {{
                 indicatorsContainer = document.createElement("div");
                 indicatorsContainer.className = "card-indicators";
-                previewDiv.appendChild(indicatorsContainer);
+                bottomBar.appendChild(indicatorsContainer);
             }}
             
             indicatorsContainer.innerHTML = "";
@@ -7183,6 +7228,7 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
         if (chip) {{
             chip.addEventListener("click", (e) => {{
                 if (e.target.classList.contains("chip-clear")) return;
+                e.stopPropagation();
                 toggleCollectionsPopup();
             }});
             chip.addEventListener("keydown", (e) => {{
@@ -7190,6 +7236,13 @@ def build_gallery_html(entries: list[dict], output_path: Path) -> str:
                     e.preventDefault();
                     toggleCollectionsPopup();
                 }}
+            }});
+        }}
+
+        const collectionsPopupEl = document.getElementById("collections-popup");
+        if (collectionsPopupEl) {{
+            collectionsPopupEl.addEventListener("click", (e) => {{
+                e.stopPropagation();
             }});
         }}
 

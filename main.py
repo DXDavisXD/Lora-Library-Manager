@@ -370,7 +370,7 @@ def refresh_gallery(lora_root: Path) -> Path:
         percent=40 if is_dedicated else None,
         message="Compiling gallery database..."
     )
-    entries = build_gallery_index(lora_root)
+    entries = build_gallery_index(lora_root, use_cache=not is_dedicated)
     
     update_job_progress(
         percent=80 if is_dedicated else None,
