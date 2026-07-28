@@ -1,37 +1,29 @@
-# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-
-# Virtual environments
-venv/
+.pytest_cache/
 .venv/
-env/
-
-# IDEs
+venv/
 .vscode/
 .idea/
 
-# Logs
-logs/
-*.log
+# Local configuration. May contain API keys if you did not use env vars.
+atlas.json
 
-# Temporary files
-*.tmp
-
-# Python cache
-.pytest_cache/
-
-# OS files
-Thumbs.db
-.DS_Store
-
-# Generated gallery (optional)
-gallery.html
-gallery.json
-
-# Local settings (optional)
+# The 2.x local files. Anyone upgrading in place still has these sitting in the
+# working copy, and settings.json holds provider API keys in plaintext — losing
+# the old ignore rules here would push someone's keys on their first commit.
 settings.json
 jobs.json
+gallery.json
+gallery.html
 .agents/
+
+# All derived state lives inside the library root, not the repo.
+.atlas/
+
+logs/
+*.log
+*.tmp
+
+.DS_Store
+Thumbs.db

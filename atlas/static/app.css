@@ -1,0 +1,858 @@
+/* Lora Atlas — stylesheet
+ *
+ * Theming rule, and the only one that matters here: components consume tokens,
+ * never literal colours. Switching theme redefines the tokens under
+ * [data-theme] and nothing else. There are no per-component theme overrides,
+ * so a new component cannot ship half-themed — which is exactly the failure
+ * mode this replaces.
+ */
+
+/* ---------- tokens ---------- */
+:root {
+  --bg:            #0b0c0e;
+  --bg-raised:     #131417;
+  --bg-sunken:     #08090a;
+  --panel:         #16171a;
+  --panel-head:    #1c1e22;
+  --border:        rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text:          #f2f4f7;
+  --text-muted:    #9aa2ae;
+  --text-faint:    #6b7280;
+  --accent:        #7c8cff;
+  --accent-hover:  #94a1ff;
+  --accent-soft:   rgba(124, 140, 255, 0.16);
+  --accent-text:   #0b0c0e;
+  --ok:            #34d399;
+  --warn:          #fbbf24;
+  --err:           #f87171;
+  --shadow:        0 18px 48px -22px rgba(0, 0, 0, 0.9);
+  --overlay:       rgba(0, 0, 0, 0.62);
+
+  --radius:   12px;
+  --radius-s: 8px;
+  --gap:      14px;
+  --speed:    .18s;
+  /* Must match CARD_W / CARD_H in app.js — the JS positions cards from these
+     numbers while the CSS sizes them, so the two have to agree. */
+  --card-w:   224px;
+  --card-h:   396px;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+}
+
+:root[data-theme="light"] {
+  --bg:            #f4f5f7;
+  --bg-raised:     #ffffff;
+  --bg-sunken:     #e9ebef;
+  --panel:         #ffffff;
+  --panel-head:    #f7f8fa;
+  --border:        rgba(15, 23, 42, 0.10);
+  --border-strong: rgba(15, 23, 42, 0.20);
+  --text:          #111827;
+  --text-muted:    #55607a;
+  --text-faint:    #8891a4;
+  --accent:        #4f5bd5;
+  --accent-hover:  #3f49b8;
+  --accent-soft:   rgba(79, 91, 213, 0.13);
+  --accent-text:   #ffffff;
+  --ok:            #047857;
+  --warn:          #a16207;
+  --err:           #b91c1c;
+  --shadow:        0 18px 40px -24px rgba(15, 23, 42, 0.35);
+  --overlay:       rgba(15, 23, 42, 0.42);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The `hidden` attribute is only `display:none` in the UA stylesheet, so any
+ * author rule that sets `display` silently defeats it. Several components here
+ * are flex containers *and* toggled with `hidden`, so state this once rather
+ * than remembering it per component. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 14px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; }
+h2 { font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+h3 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-top: 16px; }
+p  { margin: 0 0 10px; }
+code { font-family: var(--mono); font-size: .9em; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Theme-matched scrollbars. The default light/grey bars clash badly with the
+   dark UI; these blend into the surface and only assert on hover. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+.muted { color: var(--text-muted); }
+.small { font-size: 12px; }
+
+/* ---------- buttons ---------- */
+.btn {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 7px 13px;
+  cursor: pointer;
+  transition: background var(--speed), border-color var(--speed), color var(--speed);
+  display: inline-flex; align-items: center; gap: 7px;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--border-strong); background: var(--panel-head); }
+.btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.ghost { background: transparent; }
+.btn.tiny { padding: 3px 9px; font-size: 12px; }
+.btn.icon { padding: 7px; width: 32px; height: 32px; justify-content: center; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+input[type="search"], input[type="text"], input[type="number"], select, textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 7px 10px;
+  width: 100%;
+}
+textarea { resize: vertical; min-height: 70px; font-family: inherit; }
+
+.check { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; font-size: 13px; }
+.check.inline { display: inline-flex; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+/* ---------- topbar ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+/* The logo is a box and the wordmark is text, so they are centred against each
+   other; only the two text pieces share a baseline. Baseline-aligning the
+   image against the text is what left the logo sitting visibly high. */
+.brand { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+.brand-text { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.brand-mark {
+  width: 11px; height: 11px; border-radius: 3px;
+  background: linear-gradient(135deg, var(--accent), var(--ok));
+  align-self: center;
+}
+.brand-name { font-weight: 650; letter-spacing: -.01em; line-height: 1; }
+.brand-count {
+  color: var(--text-faint); font-size: 12px; line-height: 1;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* Search + filters sit in one centred group between the brand and the nav. */
+.topbar-centre {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1 1 auto; min-width: 0; justify-content: center;
+}
+.brand-logo { border-radius: 5px; display: block; flex: 0 0 auto; }
+.search-wrap { position: relative; flex: 0 1 400px; min-width: 140px; }
+.search-hint {
+  position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+  font: 11px var(--mono); color: var(--text-faint);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+  pointer-events: none;
+  transition: opacity var(--speed);
+}
+/* The hint is a "press / to search" nudge. Once you are typing it has done its
+   job and is only sitting on top of your text. */
+.search-wrap:focus-within .search-hint,
+.search-wrap.has-text .search-hint { opacity: 0; }
+/* Sized to its contents, never below. The selects have a floor width, so a
+   group allowed to shrink past that would let its buttons spill out over the
+   search bar. The search field absorbs the width pressure instead. */
+.topbar-filters {
+  display: flex; align-items: center; gap: 7px; flex: 0 0 auto;
+}
+/* The lead group carries two icon buttons (rename/delete) the trail group
+   doesn't, so its content is wider — always, since both are shown greyed
+   rather than hidden. Uncompensated, that imbalance drags the search box
+   right of true centre inside the group's `justify-content: center` block.
+   This phantom spacer on the shorter side evens the two flanks out. Adding it
+   as a flex child costs one more inter-item gap, which is folded into the
+   number below:
+   132(select) + 132(select) + 32(icon) + 32(icon) + 3*7(gaps)         <- lead  = 349
+   150(base)   + 132(select) + 1*7(gap) + 1*7(gap before this spacer)  <- trail = 296 + spacer
+   349 - 296 = 53 */
+.topbar-filters-trail::after { content: ''; display: block; flex: 0 0 53px; }
+.btn.icon.danger { color: var(--err); }
+.btn.icon.danger:hover:not([disabled]) {
+  background: var(--err); border-color: var(--err); color: #fff;
+}
+/* A fixed basis rather than `auto`: an auto-width select resizes to whatever
+   option happens to be chosen, which slides the search bar sideways every time
+   you change a filter. It can still shrink when the bar runs out of room —
+   that is width pressure, not the label, so the bar stays put in normal use. */
+.tb-select {
+  width: 132px; flex: 0 1 132px; min-width: 92px; padding: 6px 26px 6px 10px;
+  font-size: 12.5px; text-overflow: ellipsis;
+}
+#filter-base { width: 150px; flex-basis: 150px; }   /* "All base models" + counts */
+/* Greyed rather than removed: the sub-category slot keeps its place so the
+   topbar does not reflow the moment you pick a category. */
+.tb-select:disabled {
+  opacity: .45; cursor: not-allowed; color: var(--text-faint);
+}
+.topbar-actions { display: flex; gap: 8px; margin-left: 4px; flex: 0 0 auto; }
+/* Width is set by balanceTopbar() in app.js; 0 until JS runs. */
+.topbar-edge-spacer { flex: 0 0 auto; width: 0; }
+
+#sidebar-toggle { flex: 0 0 auto; }
+#sidebar-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+.field-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-muted); font-weight: 600; margin-top: 2px;
+}
+
+/* ---------- status strip ---------- */
+.status-strip {
+  display: flex; align-items: center; gap: 11px;
+  padding: 6px 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  flex: 0 0 auto;
+  min-height: 34px;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-faint); flex: 0 0 auto;
+}
+.status-dot.running { background: var(--accent); animation: pulse 1.3s ease-in-out infinite; }
+.status-dot.ok  { background: var(--ok); }
+.status-dot.err { background: var(--err); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+.status-text { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42ch; }
+.status-bar { flex: 1 1 auto; height: 4px; background: var(--bg-sunken); border-radius: 99px; overflow: hidden; max-width: 320px; }
+.status-fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .25s ease; }
+.status-meta { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- layout ---------- */
+.layout { display: flex; flex: 1 1 auto; min-height: 0; }
+
+.sidebar {
+  width: 236px; flex: 0 0 auto;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: width var(--speed);
+}
+/* Filters scroll here; the quick-action block below stays put. */
+.sidebar-scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 16px; display: flex; flex-direction: column; gap: 20px;
+}
+.sidebar-pinned {
+  flex: 0 0 auto;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+/* Collapsed: the aside is removed from the flex row entirely and the grid
+   reflows to fill. display:none is used rather than width:0 because a flex
+   item's used main size resists collapsing reliably across engines. */
+body.sidebar-collapsed .sidebar { display: none; }
+.filter-group { display: flex; flex-direction: column; gap: 7px; }
+
+.stat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.stat-list li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.stat-list .k { color: var(--text-muted); }
+.stat-list .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+.stat-list .v.warn { color: var(--warn); }
+.stat-list .v.ok { color: var(--ok); }
+
+.action-stack { display: flex; flex-direction: column; gap: 6px; }
+.action-stack .btn { justify-content: flex-start; }
+
+.content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+.result-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 18px; border-bottom: 1px solid var(--border);
+  color: var(--text-muted); font-size: 13px;
+  flex: 0 0 auto;
+}
+/* ---------- virtualised grid ---------- */
+.scroller { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 18px; position: relative; }
+.spacer { position: relative; width: 100%; }
+.grid { position: absolute; inset: 0; }
+
+.card {
+  position: absolute;
+  width: var(--card-w);
+  height: var(--card-h);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex; flex-direction: column;
+  transition: border-color var(--speed), transform var(--speed);
+  contain: layout style paint;   /* isolate each card from global reflow */
+}
+.card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.card:focus-visible { border-color: var(--accent); }
+
+.card-thumb {
+  height: 264px; flex: 0 0 auto;
+  background: var(--bg-sunken);
+  position: relative; overflow: hidden;
+}
+.card-thumb img {
+  width: 100%; height: 100%; display: block;
+  object-fit: cover;
+  /* Anchor to the top so a portrait crop keeps the face, not the midriff. */
+  object-position: top center;
+  opacity: 0; transition: opacity .22s ease;
+}
+.card-thumb img.loaded { opacity: 1; }
+.card-thumb .placeholder {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-faint); font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+}
+/* A soft gradient at the base so the indicator marks stay legible on any image. */
+.card-thumb::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 54px;
+  background: linear-gradient(to top, rgba(0,0,0,.55), transparent);
+  pointer-events: none;
+}
+
+.card-body {
+  padding: 9px 11px 9px; display: flex; flex-direction: column;
+  gap: 3px; min-height: 0; flex: 1 1 auto; overflow: hidden;
+}
+.card-title {
+  font-weight: 600; font-size: 13px; line-height: 1.32;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; flex: 0 0 auto;
+  max-height: 2.7em;
+}
+.card-sub { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; }
+/* The artist name is a real button, reset back to plain text until hovered —
+   it should read as a label first and a control second. */
+.card-sub-creator {
+  border: none; background: none; padding: 0; margin: 0; width: 100%;
+  font: inherit; text-align: left; cursor: pointer; border-radius: 3px;
+}
+.card-sub-creator:hover, .card-sub-creator:focus-visible {
+  color: var(--accent); text-decoration: underline;
+}
+.card-folder {
+  font-size: 11px; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
+}
+.card-folder::before { content: "📁"; font-size: 9px; opacity: .7; flex: 0 0 auto; }
+.card-foot {
+  margin-top: auto; padding-top: 7px;
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 10.5px; color: var(--text-faint);
+  border-top: 1px solid var(--border); flex: 0 0 auto;
+}
+
+.card-badges { position: absolute; display: flex; gap: 4px; flex-wrap: wrap; z-index: 2; }
+.card-badges-top { top: 7px; left: 7px; max-width: calc(100% - 44px); }
+.badge {
+  font-size: 10px; font-weight: 600; letter-spacing: .03em;
+  padding: 2px 7px; border-radius: 5px;
+  background: var(--overlay); color: #fff;
+  backdrop-filter: blur(3px);
+  text-transform: uppercase;
+}
+.badge.provider { color: var(--accent-hover); }
+.badge.provider.civitai { color: #ff6b78; }      /* civitai.red */
+.badge.provider.arcenciel { color: #7db4ff; }    /* arcenciel blue */
+.badge.warn { background: var(--warn); color: #1a1400; }
+.badge.nsfw { background: var(--err); color: #fff; }
+
+/* Bottom-left personal-state marks — rating, tags, notes, triggers. */
+.card-marks {
+  position: absolute; bottom: 8px; left: 8px; z-index: 2;
+  display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100% - 16px);
+}
+.mark {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 3px 6px; border-radius: 5px;
+  background: rgba(0,0,0,.55); color: #fff; backdrop-filter: blur(3px);
+}
+.mark svg { fill: currentColor; }
+.mark-rating { color: #fcd34d; }
+.mark-tags   { color: #a5b4fc; }
+.mark-notes  { color: #fff; }
+.mark-trig   { color: #6ee7b7; }
+.mark-warn   { color: #1a1400; background: var(--warn); }
+
+.card-fav {
+  position: absolute; top: 6px; right: 6px; z-index: 3;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: var(--overlay); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity var(--speed);
+}
+.card:hover .card-fav, .card-fav.on, .card-fav:focus-visible { opacity: 1; }
+.card-fav.on { color: var(--warn); }
+.card-fav svg { width: 15px; height: 15px; fill: currentColor; }
+
+.empty { text-align: center; color: var(--text-muted); padding: 60px 20px; }
+
+/* ---------- manage ---------- */
+.manage-scroll { flex: 1 1 auto; overflow-y: auto; padding: 18px; }
+
+/* Health strip at the top of Manage. */
+.manage-health {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: var(--gap);
+}
+.health-tile {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 12px 14px;
+}
+.health-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.health-value.warn { color: var(--warn); }
+.health-value.ok { color: var(--ok); }
+.health-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+
+.panel-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: var(--gap);
+  align-content: start;
+  /* dense back-fills any hole a span-2 panel would otherwise leave */
+  grid-auto-flow: dense;
+}
+/* The panels total 9 column-units (2+1+1+2+1+2), which tiles exactly into three
+   columns. Letting auto-fit choose 4 or 5 on a wide screen strands a whole
+   empty column per row — the blank space on the right. Pin it to 3 and cap the
+   overall width so panels stay readable on ultrawide displays. */
+@media (min-width: 1100px) {
+  /* margin-inline:auto is what actually centres it — a max-width alone leaves
+     every spare pixel on the right, which reads as a broken layout. */
+  .panel-grid { grid-template-columns: repeat(3, 1fr); max-width: 1800px; margin-inline: auto; }
+}
+/* Below the 3-column breakpoint the grid packs itself; keep 2 columns usable
+   on mid-size screens and drop span-2 panels to full width when narrow. */
+@media (max-width: 1099px) {
+  .panel-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+}
+.panel {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+}
+.panel.span-2 { grid-column: span 2; }
+@media (max-width: 900px) { .panel.span-2 { grid-column: span 1; } }
+.panel-footer { display: flex; gap: 10px; align-items: center; margin-top: auto; }
+
+/* Grouped operation cards with descriptions. */
+.op-group-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--accent-hover); font-weight: 700; margin: 12px 0 2px;
+}
+.op-group-title:first-child { margin-top: 0; }
+.op-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.op-card {
+  text-align: left; display: flex; flex-direction: column; gap: 3px;
+  background: var(--bg-raised); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 10px 12px; cursor: pointer;
+  transition: border-color var(--speed), background var(--speed);
+  font: inherit; color: var(--text);
+}
+.op-card:hover { border-color: var(--accent); background: var(--panel-head); }
+.op-card.primary { border-color: var(--accent); background: var(--accent-soft); }
+.op-label { font-weight: 600; font-size: 13px; }
+.op-desc { font-size: 11px; color: var(--text-muted); line-height: 1.35; }
+
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.opt-row { display: flex; flex-direction: column; gap: 4px; }
+.action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.queue-list { display: flex; flex-direction: column; gap: 6px; }
+.queue-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px; background: var(--bg-sunken);
+  border: 1px solid var(--border); border-radius: var(--radius-s); font-size: 13px;
+}
+.queue-item .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.history-list li { display: flex; gap: 8px; font-size: 12.5px; align-items: baseline; }
+.history-list .status { font-weight: 600; }
+.history-list .status.done { color: var(--ok); }
+.history-list .status.error { color: var(--err); }
+.history-list .status.cancelled { color: var(--text-faint); }
+
+.console {
+  background: var(--bg-sunken); border: 1px solid var(--border); border-radius: var(--radius-s);
+  font: 12px/1.55 var(--mono);
+  padding: 10px; height: 260px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+}
+.console .info { color: var(--text-muted); }
+.console .ok   { color: var(--ok); }
+.console .warn { color: var(--warn); }
+.console .error{ color: var(--err); }
+
+.backup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; max-height: 200px; overflow-y: auto; }
+.backup-list li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.backup-list .grow { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.provider-block { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.provider-block:last-of-type { border-bottom: none; }
+.provider-row {
+  display: flex; align-items: center; gap: 9px;
+}
+.key-row { display: flex; gap: 6px; align-items: center; margin-top: 7px; }
+.key-row input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 12px; }
+
+.path-display {
+  display: block; font-family: var(--mono); font-size: 11.5px;
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 8px 10px;
+  word-break: break-all; color: var(--text-muted);
+}
+.provider-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.pill {
+  font-size: 11px; padding: 2px 8px; border-radius: 99px;
+  border: 1px solid var(--border); color: var(--text-muted); margin-left: auto;
+}
+.pill.on { color: var(--ok); border-color: var(--ok); }
+
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.setting label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+
+/* ---------- detail modal (3-column) ---------- */
+.modal-backdrop { position: fixed; inset: 0; background: var(--overlay); z-index: 40; backdrop-filter: blur(2px); }
+body.modal-open { overflow: hidden; }
+
+.detail-modal {
+  position: fixed; z-index: 41;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(1180px, 95vw); height: min(760px, 92vh);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  animation: modal-in .18s ease;
+  overflow: hidden;
+}
+@keyframes modal-in { from { transform: translate(-50%, -48%); opacity: 0; } }
+
+.modal-close {
+  position: absolute; top: 12px; right: 12px; z-index: 5;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-raised);
+  color: var(--text-muted); cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-close:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* Three columns, each independently scrollable, so no single long scroll and
+   every kind of information has a fixed home the eye can learn. */
+.dm-grid {
+  display: grid; height: 100%;
+  grid-template-columns: 320px 1fr 340px;
+}
+/* No column scrolls as a whole — each column is a fixed-height flex stack and
+   only the individual long items inside it (triggers, tags, description)
+   scroll. Reaching "Your triggers" must never mean scrolling past everything
+   above it. */
+.dm-col { overflow: hidden; padding: 20px; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.dm-middle { border-left: 1px solid var(--border); border-right: 1px solid var(--border); background: var(--bg-raised); }
+
+/* Left column: fixed footer, scrolling body. The column itself does not
+   scroll — only .dm-left-body does — so the actions are genuinely pinned.
+   Its scrollbar is hidden: the panel is short and the bar was visual noise. */
+.dm-left { overflow: hidden; padding: 0; gap: 0; }
+.dm-left-body {
+  flex: 1 1 auto; overflow-y: auto; min-height: 0;
+  padding: 20px 20px 12px; display: flex; flex-direction: column; gap: 14px;
+  scrollbar-width: none;
+}
+.dm-left-body::-webkit-scrollbar { width: 0; height: 0; }
+
+.dm-section-title {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--accent-hover); font-weight: 700; margin: 4px 0 0;
+}
+
+.dm-title { font-size: 18px; line-height: 1.25; text-transform: none; letter-spacing: 0; color: var(--text); padding-right: 28px; }
+.dm-version-static {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-muted);
+}
+.dm-version-count {
+  font-size: 11px; color: var(--text-faint);
+  border-left: 1px solid var(--border); padding-left: 8px;
+}
+
+/* The expanded view shows the whole picture — `contain`, not `cover`, so tall
+   portraits are never cropped. The box sizes to the image rather than forcing
+   an aspect ratio, and the height cap is viewport-relative so it stays
+   proportionate on any screen. (Gallery cards keep `cover` + top anchoring;
+   there the crop is deliberate so faces stay visible in a fixed grid.) */
+.dm-media {
+  width: 100%; border-radius: var(--radius); overflow: hidden;
+  background: var(--bg-sunken);
+  display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+  min-height: 140px;
+}
+.dm-media img {
+  max-width: 100%; max-height: min(48vh, 460px);
+  width: auto; height: auto;
+  object-fit: contain;
+  display: block;
+  cursor: zoom-in;
+}
+
+/* Thumbnail strip for models that ship more than one preview. */
+.dm-thumbs {
+  display: flex; gap: 6px; flex: 0 0 auto;
+  overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.dm-thumbs::-webkit-scrollbar { height: 0; }
+.dm-thumb {
+  flex: 0 0 auto; width: 46px; height: 46px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-sunken); cursor: pointer; overflow: hidden;
+  opacity: .6; transition: opacity var(--speed), border-color var(--speed);
+}
+.dm-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.dm-thumb:hover { opacity: 1; }
+.dm-thumb.on { opacity: 1; border-color: var(--accent); }
+
+/* A true fixed footer at the bottom of the left column — it does not scroll
+   with the body, so the three buttons never move. */
+.dm-actions {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+.btn.block { width: 100%; justify-content: center; }
+.dm-action-row { display: flex; gap: 8px; }
+.dm-action-row .btn { flex: 1 1 auto; justify-content: center; }
+.dm-action-row .btn.danger { flex: 0 0 auto; }
+.btn.danger { color: var(--err); border-color: var(--border); }
+.btn.danger:hover { background: var(--err); border-color: var(--err); color: #fff; }
+.btn.view-on strong { color: inherit; }
+.btn.view-on.civitai strong { color: #ff6b78; }     /* civitai.red */
+.btn.view-on.arcenciel strong { color: #7db4ff; }   /* arcenciel blue */
+
+.dm-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.dm-fact-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); font-weight: 600; }
+.dm-fact-v { font-size: 13px; color: var(--text); word-break: break-word; }
+
+.dm-paths { display: flex; flex-direction: column; gap: 7px; }
+.dm-path-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.dm-path-row .dm-fact-k { min-width: 58px; }
+.dm-path-val { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; color: var(--text-muted); }
+.icon-btn { background: none; border: none; color: var(--text-faint); cursor: pointer; padding: 2px; display: flex; }
+.icon-btn:hover { color: var(--accent); }
+
+/* The middle column's description now owns the space, so let it grow to fill
+   and scroll internally only when genuinely long. */
+.dm-description {
+  font-size: 13px; line-height: 1.6; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+  flex: 1 1 auto; min-height: 120px; overflow-y: auto;
+}
+.dm-middle { justify-content: flex-start; }
+.dm-dup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.dm-stars { display: flex; gap: 4px; }
+.dm-star { background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-faint); }
+.dm-star svg { width: 26px; height: 26px; fill: currentColor; }
+.dm-star.on { color: var(--warn); }
+.dm-star:hover { color: var(--warn); }
+
+.dm-collection { display: flex; flex-direction: column; gap: 10px; }
+.dm-field { display: flex; flex-direction: column; gap: 4px; }
+
+/* Notes are usually a line or two — keep them compact so the trigger editor
+   below gets the room. */
+.dm-notes { min-height: 60px; height: 60px; flex: 0 0 auto; resize: none; }
+
+.dm-group-editor { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 90px; }
+.dm-group-input { flex: 1 1 auto; min-height: 80px; font-size: 12.5px; line-height: 1.5; resize: none; }
+.dm-group-row { display: flex; justify-content: flex-end; flex: 0 0 auto; }
+
+/* Tags: cap the height and fade the overflow so it reads as "more below"
+   without a scrollbar competing with the panel's own chrome. */
+.dm-tags-wrap { position: relative; flex: 0 0 auto; }
+.dm-tags-scroll {
+  max-height: 96px; overflow-y: auto;
+  scrollbar-width: none;                    /* the fade is the affordance */
+}
+.dm-tags-scroll::-webkit-scrollbar { width: 0; height: 0; }
+/* The fade is anchored to the chip box, not the whole section, so it always
+   ends where the chips end and never bleeds over the button underneath. */
+.dm-tags-box { position: relative; }
+.dm-tags-wrap.has-more .dm-tags-box::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
+  background: linear-gradient(to top, var(--panel) 15%, transparent);
+  pointer-events: none;
+}
+.dm-tags-wrap.expanded .dm-tags-scroll { max-height: 260px; }
+.dm-tags-wrap.expanded .dm-tags-box::after { opacity: 0; }
+.dm-tags-more {
+  display: flex; align-items: center; gap: 5px; margin: 6px auto 0;
+  padding: 3px 12px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--bg-raised);
+  color: var(--text-muted); font: inherit; font-size: 11.5px;
+  cursor: pointer; transition: background var(--speed), color var(--speed);
+}
+.dm-tags-more:hover { background: var(--accent-soft); color: var(--text); }
+.dm-tags-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dm-tags-more-arrow { font-size: 10px; opacity: .8; }
+
+/* chips shared by tags, triggers, collections */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 2px;
+  font-size: 12px; padding: 4px 9px; border-radius: 7px;   /* squircle, not pill */
+  background: var(--accent-soft); color: var(--text);
+  border: 1px solid transparent; cursor: default;
+  max-width: 100%;
+  /* A big trigger group must wrap inside the chip rather than overflow. */
+  white-space: normal; word-break: break-word; line-height: 1.35; text-align: left;
+}
+.chip.copyable { cursor: pointer; }
+.chip.copyable:hover { border-color: var(--accent); }
+.chip.searchable { cursor: pointer; }
+.chip.searchable:hover { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+
+/* A long official-trigger set scrolls within a capped box.
+   flex-shrink:0 is essential: as an overflow-y:auto flex child its min-content
+   height is 0, so without it the column would crush the whole list to a sliver. */
+/* Official triggers take whatever height is left in the column and scroll
+   internally, so the editor below always stays on screen. */
+.dm-trigger-scroll {
+  flex: 1 1 auto;
+  min-height: 70px; overflow-y: auto;
+  padding: 2px; margin: -2px;
+  align-content: flex-start;
+}
+.chip-label { background: none; border: none; color: inherit; cursor: pointer; padding: 0; font: inherit; text-align: left; word-break: break-word; }
+.chip-x { background: none; border: none; color: inherit; cursor: pointer; padding: 0 0 0 3px; font-size: 14px; line-height: 1; opacity: .7; }
+.chip-x:hover { opacity: 1; color: var(--err); }
+
+@media (max-width: 900px) {
+  .detail-modal { width: 96vw; height: 94vh; }
+  .dm-grid { grid-template-columns: 1fr; grid-auto-rows: max-content; overflow-y: auto; }
+  .dm-middle { border: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .dm-col { overflow-y: visible; }
+}
+
+/* ---------- toasts ---------- */
+.toasts {
+  position: fixed; bottom: 16px; right: 16px; z-index: 60;
+  display: flex; flex-direction: column; gap: 8px; max-width: 380px;
+}
+.toast {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-s); padding: 10px 12px;
+  box-shadow: var(--shadow); font-size: 13px;
+  display: flex; gap: 10px; align-items: flex-start;
+  animation: slide-in .18s ease;
+}
+.toast.error { border-left-color: var(--err); }
+.toast.ok    { border-left-color: var(--ok); }
+.toast .grow { flex: 1 1 auto; }
+.toast button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1000px) {
+  /* On narrow screens the sidebar floats over the grid instead of squeezing it. */
+  .sidebar {
+    position: fixed; inset: 44px auto 0 0; z-index: 30; width: 260px;
+    box-shadow: var(--shadow);
+    transform: none; transition: transform var(--speed);
+  }
+  body.sidebar-collapsed .sidebar {
+    display: flex; width: 260px;
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+  }
+}
+
+/* The top bar loses room in stages, but never loses a control: below 1400px
+   the filters wrap onto their own full-width row rather than disappearing,
+   so category, base model and sort stay reachable at every size. The cutoff is
+   just above the width at which brand + four selects + search + nav stop
+   fitting side by side (~1380px), so they wrap rather than collide. */
+@media (max-width: 1400px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+  .topbar-centre { order: 3; flex-basis: 100%; justify-content: flex-start; }
+  .search-wrap { flex: 1 1 200px; }
+  /* The category pair leads the row, so it stays pinned to the left edge. */
+  .topbar-filters-lead { justify-content: flex-start; }
+  .brand { flex: 1 1 auto; }
+}
+@media (max-width: 760px) {
+  /* Stack search above the filter row, and let the selects share the width. */
+  .topbar-centre { flex-wrap: wrap; row-gap: 8px; }
+  .search-wrap { flex-basis: 100%; }
+  .topbar-filters { flex-basis: 100%; justify-content: flex-start; }
+  .tb-select { flex: 1 1 0; min-width: 0; max-width: none; }
+  .brand-count { display: none; }
+}
+@media (max-width: 620px) {
+  .status-bar { display: none; }
+  .status-text { max-width: 22ch; }
+  .brand-name { display: none; }
+}

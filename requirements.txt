@@ -1,3 +1,7 @@
-requests>=2.31.0
-tqdm>=4.66.0
-Pillow>=10.0.0
+# Core runtime needs nothing beyond the standard library.
+# HTTP uses urllib, storage uses sqlite3, the server uses http.server.
+
+# Optional but strongly recommended: without it, full-size previews are served
+# instead of ~20 KB WebP thumbnails, which is the difference between a gallery
+# that opens instantly at 1500 models and one that downloads several GB.
+Pillow>=9.0.0
