@@ -7,6 +7,11 @@ It coexists with Forge / AUTOMATIC1111 rather than replacing them: your folder
 layout is left alone, sidecar files keep working, and nothing is moved unless
 you ask.
 
+![The gallery](docs/gallery.webp)
+
+*Screenshots use a generated demo library — the artwork is placeholder gradients,
+not model output.*
+
 ---
 
 ## Why this exists
@@ -89,7 +94,65 @@ Nothing is required beyond the standard library. Pillow is optional — without 
 Atlas serves full-size previews instead of thumbnails, which still works but is
 much heavier.
 
-## Use
+## The gallery
+
+The grid is the main view. Each card carries what you need to triage at a
+glance: provider and base model, your rating, and small badges for the things
+you added yourself — notes, custom tags, personal triggers — plus the folder the
+model lives in. The star toggles a favourite without opening anything.
+
+Filtering happens in the top bar, left to right: **category → sub-category →
+search → base model → sort**. The category pair drives the same nested
+collections your folders map onto, and the pencil and bin beside them rename or
+delete a category (the folder on disk follows). The sidebar adds the boolean
+cuts — favourites, rated, has notes, has custom triggers, missing metadata,
+missing preview, hide NSFW — and a running count of each.
+
+Search is full-text across names, creators, base models, tags, trigger words,
+filenames and your own notes. Typing `artist:` followed by a name narrows to one
+creator; clicking any artist name on a card does the same thing for you.
+
+### The detail view
+
+![The detail view](docs/detail.webp)
+
+Click a card for everything about one model. The preview is shown whole rather
+than cropped, with a thumbnail strip when there are several images.
+
+Rating, notes, custom tags and your own trigger words are all edited in place
+and saved as you type. **Official triggers** from the provider are listed
+separately from **your triggers**, so a metadata refresh can never overwrite
+what you wrote. Choosing a category and sub-category and pressing *Add & move to
+collection* physically moves the model and all its sidecars into a matching
+folder. Copy buttons produce a ready-made `<lora:name:weight>` tag or the full
+trigger list.
+
+## The Manage page
+
+![The Manage page](docs/manage.webp)
+
+Every operation is a button with a plain-language description — no jargon, and
+hovering explains what it will touch. They are grouped by what they are for:
+core workflow, metadata and downloads, organisation, and maintenance. One job
+runs at a time, cheapest stage first, and anything long-running can be cancelled
+from the status strip.
+
+**Backup & restore** lives on the same page. Export writes a single `.llmb`
+file, optionally favourites-only and with or without preview thumbnails.
+Restore reads one back, with separate switches for metadata, previews, and
+re-downloading model files that are missing locally.
+
+![Queue, console, providers and settings](docs/manage-lower.webp)
+
+Below that: the job queue, a live console streamed over SSE, API-key entry for
+each provider, a library-folder picker, and the tuning settings — hash workers,
+requests per second, thumbnail size, page size, default LoRA weight, and a dry
+run switch that makes every operation report what it would do without writing.
+
+## The command line
+
+Everything above is also a command. The CLI and the web UI are two front ends
+over the same code — not two implementations.
 
 ```bash
 python run.py init "Put default Lora location here"
@@ -108,9 +171,6 @@ python run.py backup export
 python run.py backup restore <file>
 python run.py doctor                # check the environment
 ```
-
-The CLI and the web UI are two front ends over the same code — not two
-implementations.
 
 ---
 
@@ -162,7 +222,7 @@ python run.py organise             # asks for confirmation first
 python run.py cleanup --delete     # remove leftovers afterwards
 ```
 
-A model and *all* its assets — sidecars, previews, `user_data.json` — move as
+A model and *all* its assets — sidecars, previews, `<stem>.user.json` — move as
 one unit. Nothing is ever overwritten (collisions get a numeric suffix),
 folders emptied by the move are removed, and versions of the same model land in
 the same folder. `dry_run` mode short-circuits the apply.
@@ -268,11 +328,16 @@ atlas/
   jobs.py               priority queue, cancellation, progress
   events.py             pub/sub behind the SSE stream
   tasks.py              runnable operations and pipelines
+  organizer.py          move planning, collision-safe apply, orphan sweep
+  folders.py            existing folder tree -> nested collections
+  backup.py             .llmb export/restore, optional re-download
+  onboarding.py         first-run wizard and library discovery
   api.py                JSON handlers and the route table
   server.py             HTTP, auth, static and media serving
   providers/            base contract, registry, CivitAI, Arcenciel
   static/               index.html, app.css, app.js
-tests/test_atlas.py     53 tests
+tests/test_atlas.py     122 tests
+docs/                   README screenshots
 ```
 
 ## Tests
@@ -281,38 +346,40 @@ tests/test_atlas.py     53 tests
 python -m unittest discover -s tests -v
 ```
 
-53 tests, no network access, each against a throwaway library.
+122 tests, no network access, each against a throwaway library.
 
 ---
 
 ## Status — what is and is not here
 
-Compared with the previous LoRA Library Manager:
+Compared with 2.x:
 
 **Present, and stronger:** incremental indexing, smart refresh, duplicate
 detection, missing-asset detection, WebUI sidecar compatibility, lenient sidecar
-repair, search, base-model and collection filtering, sorting, favourites,
-ratings, notes, personal trigger words, trigger copying, the live dashboard
-(SSE logs, health, sync triggers, settings), backup export/import, and folder
-structure adoption.
+repair, search, base-model / creator / collection filtering, sorting,
+favourites, ratings, notes, personal trigger words and trigger groups, trigger
+copying, collection editing and category rename/delete from the gallery,
+per-version user data, multi-image previews, the live dashboard (SSE logs,
+health, sync triggers, settings), backup export/restore including re-download of
+missing models, and folder structure adoption.
 
 **Not built yet:**
 
 | Feature | Note |
 |---|---|
 | Prompt builder | Not started |
-| Version grouping / selector | Each file is currently its own row |
-| Automatic file organisation | Deliberate — Atlas adopts your layout instead of imposing one |
-| Collection editing from the gallery | Schema and API exist; no UI |
-| Trigger groups | Flat trigger lists only |
-| Hover preview / multi-image carousel | Detail drawer shows the primary image |
-| Model downloading | Provider contract supports it; nothing wired to it |
+| Automatic file organisation | Deliberate — it adopts your layout instead of imposing one |
+| Hover preview on cards | The detail view has the full image and a thumbnail strip |
+| Standalone model downloading | Wired for backup restore only; no "download this model" button |
 
 **Changed on purpose:** the gallery is a fixed-size grid rather than masonry.
 Variable card heights make row geometry non-arithmetic, which is what makes
 virtualisation cheap — and virtualisation is what keeps 1500 models at 45 DOM
 nodes.
 
-**Untested against live APIs:** no network call has ever been made. The CivitAI
-client follows the documented v1 API; the Arcenciel client's endpoints are
-inferred and should be expected to need adjustment on first real use.
+**Provider status:** both clients have been exercised against the live services.
+CivitAI follows the documented v1 API. Arcenciel has no by-hash lookup, so
+resolution goes through its search endpoint and its own field names
+(`title`, `activationTags`, `uploader.username`) — the client was rewritten
+against real responses rather than assumed ones. Neither is covered by the test
+suite, which makes no network calls at all.

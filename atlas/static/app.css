@@ -160,6 +160,23 @@ input[type="search"], input[type="text"], input[type="number"], select, textarea
 }
 textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 
+/* Chromium reserves room for its native dropdown arrow *inside* the content
+   box, on top of whatever padding-right you set, so option labels were being
+   clipped in a select that had space for them. Drawing our own chevron gives
+   padding-right full control of the text area. The CSP allows `data:` images. */
+select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 30px;
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 11px 11px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%239aa2ae' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:root[data-theme="light"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2355607a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+select:disabled { background-image: none; }
+
 .check { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; font-size: 13px; }
 .check.inline { display: inline-flex; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; }
@@ -195,6 +212,9 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 }
 .brand-logo { border-radius: 5px; display: block; flex: 0 0 auto; }
 .search-wrap { position: relative; flex: 0 1 400px; min-width: 140px; }
+/* Clear the "/" badge sitting inside the field, or the placeholder and your
+   typed text run underneath it. */
+#search { padding-right: 34px; }
 .search-hint {
   position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
   font: 11px var(--mono); color: var(--text-faint);
