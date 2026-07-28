@@ -92,7 +92,7 @@ much heavier.
 ## Use
 
 ```bash
-python run.py init "E:/SD/webui-forge/models/Lora"
+python run.py init "Put default Lora location here"
 python run.py sync
 python run.py serve
 ```
