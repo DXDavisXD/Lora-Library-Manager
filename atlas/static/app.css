@@ -772,6 +772,18 @@ body.modal-open { overflow: hidden; }
   pointer-events: none;
 }
 :root[data-theme="light"] .dm-media-fill { opacity: .45; }
+/* Provider rides on the image rather than taking a labelled row in Details.
+   Its own scrim, because it sits over arbitrary artwork. */
+.dm-media-badge {
+  position: absolute; z-index: 2; left: 10px; top: 10px;
+  font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, .55); color: #fff;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+.dm-media-badge.civitai   { color: #ff8892; }
+.dm-media-badge.arcenciel { color: #9cc6ff; }
 .dm-media img {
   position: relative; z-index: 1;
   max-width: 100%; max-height: min(48vh, 460px);
@@ -1283,6 +1295,32 @@ body.modal-open { overflow: hidden; }
 }
 :root[data-surface="glass"] .dm-section-title {
   color: hsl(var(--dm-h, 232) var(--dm-s, 82%) 76%);
+}
+/* The second hue drives the small elements, so a preview with two colours in
+   it gets a panel and a set of controls that differ rather than one flat cast.
+   Same var() fallback trick: with no image colour these resolve to the accent
+   they always were, so nothing looks half-tinted. */
+:root[data-surface="glass"] .detail-modal .chip {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 60% / .18);
+  border-color: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 70% / .28);
+}
+:root[data-surface="glass"] .detail-modal .chip.searchable:hover,
+:root[data-surface="glass"] .detail-modal .chip.copyable:hover {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 62% / .40);
+  border-color: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 72% / .55);
+}
+:root[data-surface="glass"] .detail-modal .dm-trigger-scroll .chip {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 55% / .13);
+}
+:root[data-surface="glass"] .detail-modal .btn:not(.primary):not([aria-pressed="true"]) {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 62% / .13);
+}
+:root[data-surface="glass"] .detail-modal .btn:not(.primary):not([aria-pressed="true"]):hover {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 64% / .26);
+}
+:root[data-theme="light"][data-surface="glass"] .detail-modal .chip {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 62%) 55% / .15);
+  border-color: hsl(var(--dm-h2, 232) var(--dm-s2, 62%) 45% / .25);
 }
 :root[data-theme="light"][data-surface="glass"] .detail-modal {
   background:

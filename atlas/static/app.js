@@ -522,10 +522,28 @@ function dominantColour(img) {
     buckets.set(key, acc);
   }
 
-  let best = null;
-  for (const acc of buckets.values()) if (!best || acc.w > best.w) best = acc;
-  if (!best || best.w < 12) return null;       // too little colour to lean on
-  return { h: best.h / best.w, s: best.s / best.w };
+  // Rank the buckets and take two. The runner-up has to sit a reasonable
+  // distance around the wheel from the winner, or a single gradient — which is
+  // one hue smeared across several adjacent buckets — would supply both and the
+  // "second" colour would be indistinguishable from the first.
+  const ranked = [...buckets.entries()]
+    .map(([key, acc]) => ({ key, w: acc.w, h: acc.h / acc.w, s: acc.s / acc.w }))
+    .sort((a, b) => b.w - a.w);
+  if (!ranked.length || ranked[0].w < 12) return null;   // too little colour
+
+  const primary = ranked[0];
+  const apart = (a, b) => {
+    const d = Math.abs(a - b);
+    return Math.min(d, 1 - d);                 // hue is a circle
+  };
+  const secondary = ranked.slice(1).find(
+    (c) => c.w >= primary.w * 0.12 && apart(c.h, primary.h) > 0.08) || null;
+
+  return {
+    h: primary.h, s: primary.s,
+    h2: secondary ? secondary.h : null,
+    s2: secondary ? secondary.s : null,
+  };
 }
 
 /** Push a preview's dominant hue into the detail modal.
@@ -539,15 +557,26 @@ function dominantColour(img) {
 function tintDetailFromImage(img) {
   const modal = $('detail-modal');
   if (!modal) return;
+  const clear = () => ['--dm-h', '--dm-s', '--dm-h2', '--dm-s2']
+    .forEach((k) => modal.style.removeProperty(k));
+
   const colour = dominantColour(img);
-  if (!colour) {
-    modal.style.removeProperty('--dm-h');
-    modal.style.removeProperty('--dm-s');
-    return;
-  }
+  if (!colour) return clear();
+
+  // Clamped hard on both sides. Below the floor the wash is invisible and the
+  // panel may as well be neutral; above the ceiling a lurid preview would put
+  // a fluorescent cast over the whole thing.
+  const sat = (v) => `${Math.round(Math.min(0.72, Math.max(0.30, v)) * 100)}%`;
   modal.style.setProperty('--dm-h', String(Math.round(colour.h * 360)));
-  modal.style.setProperty('--dm-s',
-    `${Math.round(Math.min(0.72, Math.max(0.30, colour.s)) * 100)}%`);
+  modal.style.setProperty('--dm-s', sat(colour.s));
+
+  // The accent hue drives the smaller elements — chips, trigger groups, the
+  // rating stars. Falling back to the dominant hue rather than to neutral: a
+  // single-colour image should still tint them, just without the contrast a
+  // second hue would have given.
+  modal.style.setProperty('--dm-h2',
+    String(Math.round((colour.h2 ?? colour.h) * 360)));
+  modal.style.setProperty('--dm-s2', sat(colour.s2 ?? colour.s));
 }
 
 /* --- left column: identity, image, actions --- */
@@ -591,6 +620,11 @@ function detailLeft(model) {
     img.addEventListener('load', () => tintDetailFromImage(img));
     show(model.previews[0]);
     media.append(fill, img);
+    if (model.provider) {
+      const badge = el('span', `dm-media-badge provider ${model.provider}`, model.provider);
+      badge.title = `Metadata from ${model.provider}`;
+      media.append(badge);
+    }
     parts.push(media);
 
     // When a model ships several previews, offer the rest as a thumbnail strip.
@@ -630,7 +664,9 @@ function detailLeft(model) {
   };
   fact('Creator', model.creator);
   fact('Base model', model.base_model);
-  fact('Provider', model.provider);
+  // Provider is a badge on the preview instead of a row here. It is one word
+  // that never changes, and giving it a labelled cell of its own cost a whole
+  // row of a panel that already needs scrolling.
   fact('Size', fmtBytes(model.size));
   fact('Metadata', model.meta_state);
   fact('Used', model.use_count ? `${model.use_count}×` : '');
