@@ -648,6 +648,46 @@ class TestQuery(LibraryFixture):
         result = query.list_models(self.conn, {"base_model": "SDXL 1.0"})
         self.assertEqual(result["total"], 1)
 
+    def test_uncategorised_filter_and_count(self):
+        """The pile nothing has claimed is directly askable for."""
+        self.seed()
+        ids = [r["id"] for r in self.conn.execute("SELECT id FROM model_file ORDER BY path")]
+        with db.transaction(self.conn):
+            cid = self.conn.execute(
+                "INSERT INTO collection(name, created_at) VALUES ('Anime', ?)",
+                (db.now(),)).lastrowid
+            self.conn.execute(
+                "INSERT INTO collection_member(collection_id, file_id) VALUES (?,?)",
+                (cid, ids[0]))
+
+        self.assertEqual(query.facets(self.conn)["uncategorised"], 2)
+        result = query.list_models(self.conn, {"uncategorised": "1"})
+        self.assertEqual(result["total"], 2)
+        # And the filed one is precisely what it excludes.
+        filed = self.conn.execute(
+            "SELECT path FROM model_file WHERE id=?", (ids[0],)).fetchone()["path"]
+        self.assertNotIn(filed, [i["path"] for i in result["items"]])
+
+    def test_uncategorised_is_its_own_flag_not_a_reserved_name(self):
+        """A collection really can be called anything, so the filter must not
+        depend on a category name being unreachable."""
+        self.seed()
+        # Even a collection named like a sentinel is treated as an ordinary one.
+        with db.transaction(self.conn):
+            cid = self.conn.execute(
+                "INSERT INTO collection(name, created_at) VALUES ('..uncategorised', ?)",
+                (db.now(),)).lastrowid
+            fid = self.conn.execute("SELECT id FROM model_file LIMIT 1").fetchone()["id"]
+            self.conn.execute(
+                "INSERT INTO collection_member(collection_id, file_id) VALUES (?,?)",
+                (cid, fid))
+        # Filtering by that literal name finds the member, not the unfiled pile.
+        named = query.list_models(self.conn, {"category": "..uncategorised"})
+        self.assertEqual(named["total"], 1)
+        # The flag still reports only genuinely unfiled models.
+        unfiled = query.list_models(self.conn, {"uncategorised": "1"})
+        self.assertEqual(unfiled["total"], 2)
+
     def test_filter_by_creator(self):
         self.seed()
         result = query.list_models(self.conn, {"creator": "alice"})

@@ -26,6 +26,7 @@ const el = (tag, cls, text) => {
 
 const EMPTY_FILTERS = {
   q: '', sort: 'name', base_model: '', creator: '', collection: '', category: '', subcategory: '',
+  uncategorised: false,
   favorite: false, rated: false, has_notes: false, has_triggers: false,
   meta_state: '', missing_preview: false, nsfw: '',
 };
@@ -45,6 +46,7 @@ const state = {
   followConsole: true,
   view: 'gallery',
   categories: [],          // category tree for the cascade
+  uncategorised: 0,        // models no collection has claimed
 };
 
 /* -------------------------------------------------------------- transport */
@@ -113,8 +115,12 @@ function queryString(page) {
   if (f.base_model) params.set('base_model', f.base_model);
   if (f.creator) params.set('creator', f.creator);
   if (f.collection) params.set('collection', f.collection);
-  if (f.category) params.set('category', f.category);
-  if (f.subcategory) params.set('subcategory', f.subcategory);
+  if (f.uncategorised) {
+    params.set('uncategorised', '1');
+  } else {
+    if (f.category) params.set('category', f.category);
+    if (f.subcategory) params.set('subcategory', f.subcategory);
+  }
   if (f.favorite) params.set('favorite', '1');
   if (f.rated) params.set('rated', '1');
   if (f.has_notes) params.set('has_notes', '1');
@@ -986,6 +992,110 @@ function editableList(model, field, placeholder, readKey = null) {
  * category or sub-category. A "move files" toggle turns the collection into a
  * real folder on disk.
  */
+/** A dropdown you can type into.
+ *
+ *  A native <select> cannot be searched, and with dozens of sub-categories the
+ *  list ran to the bottom of the window. This opens a capped, scrollable panel
+ *  with the search box already focused, so the common case is "start typing".
+ *
+ *  Creating is offered only when nothing matches what was typed — a permanent
+ *  "＋ New…" row in the list is one more thing to scroll past, and it invites a
+ *  duplicate of something already there a few rows below.
+ */
+function searchPicker({ placeholder, emptyLabel, options, value, onPick, onCreate }) {
+  const wrap = el('div', 'picker');
+  const button = el('button', 'picker-button');
+  button.type = 'button';
+  const caret = el('span', 'picker-caret', '▾');
+  const text = el('span', 'picker-value');
+  button.append(text, caret);
+
+  const panel = el('div', 'picker-panel');
+  panel.hidden = true;
+  const searchRow = el('div', 'picker-search');
+  const search = el('input');
+  search.type = 'text';
+  search.placeholder = placeholder;
+  search.autocomplete = 'off';
+  searchRow.append(search);
+  const list = el('div', 'picker-list');
+  panel.append(searchRow, list);
+  wrap.append(button, panel);
+
+  let selected = value || '';
+  const paintValue = () => { text.textContent = selected || emptyLabel; };
+  paintValue();
+
+  const close = () => {
+    panel.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', onOutside, true);
+  };
+  const onOutside = (event) => { if (!wrap.contains(event.target)) close(); };
+
+  const choose = (name) => { selected = name; paintValue(); close(); onPick(name); };
+
+  const paintList = () => {
+    const query = search.value.trim().toLowerCase();
+    const matches = options().filter((o) => o.name.toLowerCase().includes(query));
+    list.replaceChildren();
+
+    const none = el('button', `picker-item${selected ? '' : ' on'}`);
+    none.type = 'button';
+    none.append(el('span', 'picker-item-name', emptyLabel));
+    none.onclick = () => choose('');
+    if (!query) list.append(none);
+
+    matches.forEach((o) => {
+      const row = el('button', `picker-item${o.name === selected ? ' on' : ''}`);
+      row.type = 'button';
+      row.append(el('span', 'picker-item-name', o.name));
+      if (o.count != null) row.append(el('span', 'picker-item-count', String(o.count)));
+      row.onclick = () => choose(o.name);
+      list.append(row);
+    });
+
+    const typed = search.value.trim();
+    const exists = matches.some((o) => o.name.toLowerCase() === typed.toLowerCase());
+    if (typed && !exists && onCreate) {
+      const make = el('button', 'picker-item picker-create');
+      make.type = 'button';
+      make.append(el('span', 'picker-item-name', `Create “${typed}”`));
+      make.onclick = () => choose(typed);
+      list.append(make);
+    }
+    if (!list.childElementCount) {
+      list.append(el('div', 'picker-empty', 'Nothing matches'));
+    }
+  };
+
+  button.onclick = () => {
+    if (!panel.hidden) return close();
+    panel.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    search.value = '';
+    paintList();
+    search.focus();
+    document.addEventListener('mousedown', onOutside, true);
+  };
+  search.oninput = paintList;
+  search.onkeydown = (event) => {
+    if (event.key === 'Escape') { event.stopPropagation(); close(); button.focus(); }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      const first = list.querySelector('.picker-item');
+      if (first) first.click();
+    }
+  };
+
+  return {
+    node: wrap,
+    get value() { return selected; },
+    set value(v) { selected = v || ''; paintValue(); },
+    refresh: paintList,
+  };
+}
+
 function collectionCascade(model) {
   const wrap = el('div', 'dm-collection');
   const current = el('div', 'chips');
@@ -1023,53 +1133,40 @@ function collectionCascade(model) {
   };
   paintCurrent();
 
-  const NEW = ' new';   // sentinel option value for "create new"
+  // Both pickers sit on one row. Stacked, each burned a full row of the panel
+  // on a control as wide as the panel itself, for names rarely longer than a
+  // word — which is the space that was going to waste.
+  const row = el('div', 'dm-picker-row');
 
-  // Category dropdown: existing categories + "＋ New category". Picking New
-  // swaps in a text box. Same pattern for sub-category.
   const catField = el('div', 'dm-field');
-  catField.append(el('label', 'field-label', 'Category (e.g. Anime, Concept)'));
-  const catSelect = el('select');
-  const catInput = el('input');
-  catInput.type = 'text';
-  catInput.placeholder = 'New category name…';
-  catInput.hidden = true;
-  catField.append(catSelect, catInput);
+  catField.append(el('label', 'field-label', 'Category'));
+  const catPicker = searchPicker({
+    placeholder: 'Search, or type a new name',
+    emptyLabel: 'Choose a category',
+    options: () => (state.categories || []).map((c) => ({ name: c.name, count: c.count })),
+    onPick: () => { subPicker.value = ''; },
+    onCreate: true,
+  });
+  catField.append(catPicker.node);
 
   const subField = el('div', 'dm-field');
-  subField.append(el('label', 'field-label', 'Sub-category (optional, e.g. Fate)'));
-  const subSelect = el('select');
-  const subInput = el('input');
-  subInput.type = 'text';
-  subInput.placeholder = 'New sub-category name…';
-  subInput.hidden = true;
-  subField.append(subSelect, subInput);
+  subField.append(el('label', 'field-label', 'Sub-category (optional)'));
+  const subPicker = searchPicker({
+    placeholder: 'Search, or type a new name',
+    emptyLabel: 'None (top level)',
+    options: () => {
+      const cat = catPicker.value.toLowerCase();
+      const found = (state.categories || []).find((c) => c.name.toLowerCase() === cat);
+      return (found ? found.subcategories : []).map((sc) => ({ name: sc.name, count: sc.count }));
+    },
+    onPick: () => {},
+    onCreate: true,
+  });
+  subField.append(subPicker.node);
+  row.append(catField, subField);
 
-  const fillCats = () => {
-    catSelect.replaceChildren(new Option('Choose a category…', ''));
-    (state.categories || []).forEach((c) => catSelect.append(new Option(`${c.name} (${c.count})`, c.name)));
-    catSelect.append(new Option('＋ New category…', NEW));
-  };
-  const fillSubs = () => {
-    const cat = currentCategory();
-    const found = (state.categories || []).find((c) => c.name.toLowerCase() === cat.toLowerCase());
-    subSelect.replaceChildren(new Option('None (top level)', ''));
-    (found ? found.subcategories : []).forEach((s) => subSelect.append(new Option(`${s.name} (${s.count})`, s.name)));
-    subSelect.append(new Option('＋ New sub-category…', NEW));
-  };
-  const currentCategory = () =>
-    (catSelect.value === NEW ? catInput.value : catSelect.value).trim();
-  const currentSub = () =>
-    (subSelect.value === NEW ? subInput.value : subSelect.value === '' ? '' : subSelect.value).trim();
-
-  catSelect.onchange = () => {
-    catInput.hidden = catSelect.value !== NEW;
-    if (catSelect.value === NEW) catInput.focus();
-    fillSubs();
-  };
-  catInput.oninput = fillSubs;
-  subSelect.onchange = () => { subInput.hidden = subSelect.value !== NEW; if (subSelect.value === NEW) subInput.focus(); };
-  fillCats(); fillSubs();
+  const currentCategory = () => catPicker.value.trim();
+  const currentSub = () => subPicker.value.trim();
 
   // Default to the model's *deepest* existing collection, so both the category
   // and its sub-category show what it's actually filed under (a model in both
@@ -1079,12 +1176,8 @@ function collectionCascade(model) {
     .sort((a, b) => b.name.split(' / ').length - a.name.split(' / ').length)[0];
   if (existing) {
     const [cat, ...rest] = existing.name.split(' / ');
-    if ([...catSelect.options].some((o) => o.value === cat)) {
-      catSelect.value = cat;
-      fillSubs();
-      const sub = rest.join(' / ');
-      if (sub && [...subSelect.options].some((o) => o.value === sub)) subSelect.value = sub;
-    }
+    catPicker.value = cat;
+    subPicker.value = rest.join(' / ');
   }
 
   // Adding to a collection is the same act as filing it into that folder, so
@@ -1107,14 +1200,14 @@ function collectionCascade(model) {
       model.collections = [...(model.collections || []), { id: created.id, name }];
       paintCurrent();
       await refreshFacets();
-      fillCats(); catSelect.value = ''; catInput.value = ''; catInput.hidden = true;
-      subInput.value = ''; subInput.hidden = true; fillSubs();
+      catPicker.value = '';
+      subPicker.value = '';
       invalidateItem(model.id, () => {});
       toast(res.job ? `Added to ${name}; moving files…` : `Added to ${name}`, 'ok');
     } catch (err) { toast(err.message, 'error'); }
   };
 
-  wrap.append(current, catField, subField, addBtn);
+  wrap.append(current, row, addBtn);
   return wrap;
 }
 
@@ -1254,19 +1347,33 @@ async function refreshFacets() {
     const data = await apiGet('/api/facets');
     fillSelect($('filter-base'), data.base_models.map(
       (b) => ({ value: b.value, label: `${b.value} (${b.count})` })), 'All');
-    applyCategories(data.categories || []);
+    applyCategories(data.categories || [], data.uncategorised ?? 0);
     const stats = await apiGet('/api/stats');
     renderStats(stats);
   } catch { /* the strip already shows the connection state */ }
 }
 
 /** Populate the sidebar category cascade and remember the tree for the modal. */
-function applyCategories(categories) {
+/** The "no collection" choice is marked with a data attribute on its <option>,
+ *  not a reserved value. Any string could legitimately be a category name, and
+ *  a sentinel carrying an unusual character does not survive the DOM intact —
+ *  so identity lives on the element, where nothing can collide with it. */
+const UNCATEGORISED = 'uncategorised';
+
+function applyCategories(categories, uncategorised = null) {
   state.categories = categories;
+  if (uncategorised !== null) state.uncategorised = uncategorised;
   const catSel = $('filter-category');
   const prev = catSel.value;
   catSel.replaceChildren(new Option('All categories', ''));
   categories.forEach((c) => catSel.append(new Option(`${c.name} (${c.count})`, c.name)));
+  // Last, and only when there is something in it: the pile you have not filed
+  // yet is the one you actually want to open while organising.
+  if (state.uncategorised) {
+    const opt = new Option(`Uncategorized (${state.uncategorised})`, UNCATEGORISED);
+    opt.dataset.uncategorised = '1';
+    catSel.append(opt);
+  }
   if ([...catSel.options].some((o) => o.value === prev)) catSel.value = prev;
   paintSubcategories();
 }
@@ -1285,12 +1392,16 @@ function paintSubcategories() {
   const usable = !!cat && subs.length > 0;
   subSel.disabled = !usable;
   subSel.title = !cat ? 'Pick a category first'
+    : cat === UNCATEGORISED ? 'Models in no collection have no sub-categories'
     : usable ? 'Sub-category' : `"${cat}" has no sub-categories`;
-  // Rename and delete target whatever is currently selected.
-  $('delete-category').disabled = !cat;
-  $('rename-category').disabled = !cat;
+  // Rename and delete target whatever is currently selected. "Uncategorized"
+  // is a query, not a collection — there is nothing on disk to rename or delete.
+  const real = !!cat && cat !== UNCATEGORISED;
+  $('delete-category').disabled = !real;
+  $('rename-category').disabled = !real;
   if (!usable) {
-    subSel.replaceChildren(new Option(cat ? 'No sub-categories' : 'All', ''));
+    subSel.replaceChildren(new Option(
+      !cat ? 'All' : cat === UNCATEGORISED ? '—' : 'No sub-categories', ''));
     subSel.value = '';
     return;
   }
@@ -1826,7 +1937,9 @@ function bindFilters() {
   // Category cascade: choosing a category resets the sub-category and reveals
   // its options; choosing a sub-category narrows further.
   $('filter-category').addEventListener('change', (event) => {
-    state.filters.category = event.target.value;
+    const option = event.target.selectedOptions[0];
+    state.filters.uncategorised = option?.dataset.uncategorised === '1';
+    state.filters.category = state.filters.uncategorised ? UNCATEGORISED : event.target.value;
     state.filters.subcategory = '';
     state.filters.collection = '';
     paintSubcategories();
@@ -2020,7 +2133,7 @@ async function init() {
     renderHistory(boot.history || []);
     fillSelect($('filter-base'), boot.facets.base_models.map(
       (b) => ({ value: b.value, label: `${b.value} (${b.count})` })), 'All');
-    applyCategories(boot.facets.categories || []);
+    applyCategories(boot.facets.categories || [], boot.facets.uncategorised ?? 0);
 
     applyJobState({ jobs: boot.jobs });
     connectEvents();

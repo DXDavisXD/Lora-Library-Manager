@@ -880,7 +880,67 @@ body.modal-open { overflow: hidden; }
 .dm-star:hover { color: var(--warn); }
 
 .dm-collection { display: flex; flex-direction: column; gap: 10px; }
-.dm-field { display: flex; flex-direction: column; gap: 4px; }
+.dm-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/* Category and sub-category share a row. min-width:0 on both so a long name
+   ellipsises inside its own half instead of shoving the other one narrow. */
+.dm-picker-row { display: flex; gap: 10px; }
+.dm-picker-row .dm-field { flex: 1 1 0; }
+
+/* ---------- searchable picker ---------- */
+.picker { position: relative; }
+.picker-button {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  font: inherit; color: var(--text); text-align: left;
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 7px 10px; cursor: pointer;
+}
+.picker-button:hover { border-color: var(--border-strong); }
+.picker-value {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picker-caret { flex: 0 0 auto; color: var(--text-faint); font-size: 11px; }
+.picker-panel {
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--panel-head); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s); box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.picker-search { padding: 7px; border-bottom: 1px solid var(--border); }
+.picker-search input { width: 100%; font-size: 12.5px; padding: 5px 8px; }
+/* Capped so the list cannot run to the bottom of the window; ~7 rows, then it
+   scrolls inside itself. */
+.picker-list { max-height: 226px; overflow-y: auto; padding: 4px; }
+.picker-item {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  font: inherit; font-size: 12.5px; color: var(--text); text-align: left;
+  background: none; border: 0; border-radius: 7px; padding: 6px 8px;
+  cursor: pointer;
+}
+.picker-item:hover { background: var(--accent-soft); }
+.picker-item.on { background: var(--accent); color: var(--accent-text); }
+.picker-item-name {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picker-item-count {
+  flex: 0 0 auto; font-size: 11px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.picker-item.on .picker-item-count { color: inherit; opacity: .75; }
+.picker-create { color: var(--accent-hover); font-weight: 600; }
+.picker-empty { padding: 10px 8px; font-size: 12px; color: var(--text-faint); }
+
+:root[data-surface="glass"] .picker-button {
+  background: var(--glass-control); border-color: var(--glass-edge);
+  border-radius: var(--radius-pill);
+}
+:root[data-surface="glass"] .picker-panel {
+  background: var(--glass-tint-2); border-color: var(--glass-edge);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+}
 
 /* Notes are usually a line or two — keep them compact so the trigger editor
    below gets the room. */

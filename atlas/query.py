@@ -30,6 +30,7 @@ SORTS: dict[str, str] = {
 
 _FTS_UNSAFE = re.compile(r'["\^\*\(\):]')
 
+
 SELECT_FIELDS = """
     f.id, f.path, f.filename, f.stem, f.size, f.mtime, f.sha256, f.hash_state,
     m.name, m.version_name, m.creator, m.base_model, m.provider,
@@ -88,6 +89,14 @@ def build_filters(params: dict[str, Any]) -> tuple[str, list[Any], list[str]]:
     if creator:
         where.append("m.creator = ?")
         args.append(creator)
+
+    # Everything no collection has claimed — the working set while you are
+    # partway through organising, and otherwise only reachable by elimination.
+    # A separate flag, not a reserved category name: safe_component() allows
+    # leading dots, so any sentinel string could be created for real.
+    if params.get("uncategorised"):
+        where.append(
+            "NOT EXISTS (SELECT 1 FROM collection_member cmc WHERE cmc.file_id = f.id)")
 
     provider = params.get("provider")
     if provider:
@@ -332,6 +341,10 @@ def facets(conn) -> dict[str, Any]:
             )
         ],
         "categories": category_tree(conn),
+        "uncategorised": int(conn.execute(
+            "SELECT COUNT(*) FROM model_file f WHERE f.present=1 AND NOT EXISTS "
+            "(SELECT 1 FROM collection_member cm WHERE cm.file_id = f.id)"
+        ).fetchone()[0]),
     }
 
 
