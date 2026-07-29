@@ -58,16 +58,18 @@ def upsert_model(conn, file_id: int, fields: dict[str, Any], source: str) -> Non
         """
         INSERT INTO model (file_id, provider, provider_model_id, provider_version_id,
                            name, version_name, creator, base_model, description,
-                           trained_words, tags, preferred_weight, negative_prompt,
-                           nsfw, meta_state, fetched_at, source)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                           description_html, trained_words, tags, preferred_weight,
+                           negative_prompt, nsfw, meta_state, fetched_at, source)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(file_id) DO UPDATE SET
             provider=excluded.provider,
             provider_model_id=excluded.provider_model_id,
             provider_version_id=excluded.provider_version_id,
             name=excluded.name, version_name=excluded.version_name,
             creator=excluded.creator, base_model=excluded.base_model,
-            description=excluded.description, trained_words=excluded.trained_words,
+            description=excluded.description,
+            description_html=excluded.description_html,
+            trained_words=excluded.trained_words,
             tags=excluded.tags, preferred_weight=excluded.preferred_weight,
             negative_prompt=excluded.negative_prompt, nsfw=excluded.nsfw,
             meta_state=excluded.meta_state, fetched_at=excluded.fetched_at,
@@ -76,7 +78,8 @@ def upsert_model(conn, file_id: int, fields: dict[str, Any], source: str) -> Non
         (
             file_id, pick("provider"), pick("provider_model_id"), pick("provider_version_id"),
             pick("name"), pick("version_name"), pick("creator"), pick("base_model"),
-            pick("description"), db.jdump(trained), db.jdump(tags),
+            pick("description"), pick("description_html"),
+            db.jdump(trained), db.jdump(tags),
             fields.get("preferred_weight") if fields.get("preferred_weight") is not None
             else (existing["preferred_weight"] if existing is not None else None),
             pick("negative_prompt"), int(bool(fields.get("nsfw"))),

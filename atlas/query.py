@@ -244,12 +244,14 @@ def get_model(conn, file_id: int) -> dict[str, Any] | None:
         return None
     data = serialise(row)
     detail = conn.execute(
-        "SELECT description, negative_prompt, source, fetched_at FROM model WHERE file_id=?",
+        "SELECT description, description_html, negative_prompt, source, fetched_at "
+        "FROM model WHERE file_id=?",
         (file_id,),
     ).fetchone()
     if detail:
         data.update({
             "description": detail["description"] or "",
+            "description_html": detail["description_html"] or "",
             "negative_prompt": detail["negative_prompt"] or "",
             "source": detail["source"] or "",
             "fetched_at": detail["fetched_at"],

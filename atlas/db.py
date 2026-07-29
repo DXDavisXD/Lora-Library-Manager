@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS model (
     creator             TEXT,
     base_model          TEXT,
     description         TEXT,
+    description_html    TEXT,
     trained_words       TEXT,     -- json array
     tags                TEXT,     -- json array
     preferred_weight    REAL,
@@ -226,6 +227,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('schema_version', ?)", (str(SCHEMA_VERSION),)
         )
+
+    # CREATE TABLE IF NOT EXISTS cannot add a column to a table that already
+    # exists, so new columns are applied here. Checked against the live schema
+    # rather than the version counter: an ALTER that has already happened is
+    # then simply skipped, which is what makes this safe to run on every open.
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(model)")}
+    for column, decl in (("description_html", "TEXT"),):
+        if column not in have:
+            conn.execute(f"ALTER TABLE model ADD COLUMN {column} {decl}")
+
     # Future migrations dispatch on int(row["value"]) here.
 
 

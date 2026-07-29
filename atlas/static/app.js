@@ -748,7 +748,16 @@ function detailMiddle(model) {
   parts.push(collectionCascade(model));
 
   parts.push(sectionTitle('Description'));
-  if (model.description) {
+  if (model.description_html) {
+    // Already reduced to a small allowlist server-side (sidecar.clean_html):
+    // no scripts, no attributes but a scheme-checked href, unknown tags
+    // dropped. Rendering it as markup is what keeps the author's headings,
+    // lists and line breaks — flattened to one paragraph a long description is
+    // barely readable.
+    const body = el('div', 'dm-description dm-rich');
+    body.innerHTML = model.description_html;
+    parts.push(body);
+  } else if (model.description) {
     parts.push(el('div', 'dm-description', model.description.slice(0, 8000)));
   } else {
     parts.push(el('p', 'muted small', '— No description —'));

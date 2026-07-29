@@ -143,6 +143,61 @@ def clean_text(value: Any, limit: int = 8000) -> str:
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())[:limit]
 
 
+# Provider descriptions are author-written HTML. Flattening them to one
+# paragraph, which is what clean_text() does, throws away the headings, lists
+# and line breaks that make a long description readable at all.
+#
+# This is a strict allowlist, not a blocklist: anything not named here is
+# dropped, so a tag nobody thought about cannot arrive later and be trusted by
+# default. Attributes go entirely, except href on a link, which is then
+# restricted to http/https/mailto — that rules out javascript: and data: URLs.
+# The result is sanitised once, on the way in, so the browser is only ever
+# handed markup that has already been through this.
+_ALLOWED_TAGS = {
+    "p", "br", "b", "strong", "i", "em", "u", "s", "code", "pre",
+    "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6",
+    "a", "hr", "span", "div",
+}
+# Rendered as their block equivalent rather than kept: these carry layout or
+# fetch behaviour we do not want, but their text is worth keeping.
+_UNWRAP_TAGS = {"span", "div"}
+_SAFE_SCHEME = re.compile(r"^\s*(https?:|mailto:)", re.I)
+_TAG_RE = re.compile(r"<(/?)([a-zA-Z0-9]+)([^>]*)>")
+_HREF_RE = re.compile(r"""href\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))""", re.I)
+
+
+def clean_html(value: Any, limit: int = 20000) -> str:
+    """Reduce provider HTML to a small, safe subset for display."""
+    if not value:
+        return ""
+    raw = str(value)[:limit * 2]
+
+    def replace(match: re.Match) -> str:
+        closing, name, attrs = match.group(1), match.group(2).lower(), match.group(3)
+        if name not in _ALLOWED_TAGS:
+            return ""                       # drop the tag, keep its text
+        if name in _UNWRAP_TAGS:
+            return ""                       # unwrap: the text stays, the box goes
+        if name == "a":
+            if closing:
+                return "</a>"
+            href = ""
+            found = _HREF_RE.search(attrs or "")
+            if found:
+                href = found.group(2) or found.group(3) or found.group(4) or ""
+            if not _SAFE_SCHEME.match(href):
+                return ""                   # unsafe or relative target: unwrap it
+            safe = (href.replace("&", "&amp;").replace('"', "&quot;")
+                        .replace("<", "&lt;").replace(">", "&gt;"))
+            return f'<a href="{safe}" target="_blank" rel="noopener noreferrer nofollow">'
+        return f"<{'/' if closing else ''}{name}>"
+
+    out = _TAG_RE.sub(replace, raw)
+    # Any surviving angle bracket is literal text, not markup.
+    out = re.sub(r"<(?![/a-zA-Z])", "&lt;", out)
+    return out[:limit].strip()
+
+
 def _as_list(value: Any) -> list[str]:
     """Coerce the several shapes trigger words arrive in into a clean list."""
     if value is None:
@@ -329,7 +384,13 @@ def normalise(raw: dict[str, Any], filename: str) -> dict[str, Any]:
         "version_name": version_name,
         "creator": creator,
         "base_model": str(raw.get("baseModel") or raw.get("base_model") or "").strip(),
+        # Plain text stays the canonical field — it is what the WebUI reads and
+        # what the search index tokenises. The formatted version rides alongside
+        # for our own detail panel.
         "description": clean_text(raw.get("description") or model.get("description")),
+        "description_html": clean_html(
+            raw.get("description_html")
+            or raw.get("description") or model.get("description")),
         "trained_words": triggers,
         "tags": tags,
         "preferred_weight": weight,
@@ -693,6 +754,8 @@ def write_metadata_sidecar(model_path: Path, fields: dict[str, Any],
         "version_name": fields.get("version_name", ""),
         "creator": fields.get("creator", ""),
         "description": fields.get("description") or record.get("description", ""),
+        "description_html": (fields.get("description_html")
+                             or record.get("description_html", "")),
         "base_model": fields.get("base_model", ""),
         "trained_words": fields.get("trained_words", []),
         "tags": fields.get("tags", []),

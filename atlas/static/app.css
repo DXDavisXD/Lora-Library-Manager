@@ -814,6 +814,40 @@ body.modal-open { overflow: hidden; }
   white-space: pre-wrap; word-break: break-word;
   flex: 1 1 auto; min-height: 120px; overflow-y: auto;
 }
+/* The formatted variant. pre-wrap has to go here — the markup carries its own
+   block structure, and keeping it would double every gap. */
+.dm-rich { white-space: normal; }
+.dm-rich p { margin: 0 0 .7em; }
+.dm-rich p:last-child { margin-bottom: 0; }
+.dm-rich h1, .dm-rich h2, .dm-rich h3,
+.dm-rich h4, .dm-rich h5, .dm-rich h6 {
+  font-size: 13px; font-weight: 700; margin: 1.1em 0 .4em;
+  color: hsl(var(--dm-h, 232) var(--dm-s, 82%) 76%);
+  text-transform: none; letter-spacing: 0;
+}
+:root[data-theme="light"] .dm-rich h1, :root[data-theme="light"] .dm-rich h2,
+:root[data-theme="light"] .dm-rich h3, :root[data-theme="light"] .dm-rich h4,
+:root[data-theme="light"] .dm-rich h5, :root[data-theme="light"] .dm-rich h6 {
+  color: hsl(var(--dm-h, 232) var(--dm-s, 62%) 38%);
+}
+.dm-rich ul, .dm-rich ol { margin: .4em 0 .7em; padding-left: 1.35em; }
+.dm-rich li { margin: .18em 0; }
+.dm-rich a { color: var(--accent-hover); }
+.dm-rich a:hover { text-decoration: underline; }
+.dm-rich code {
+  background: var(--glass-control); border-radius: 4px; padding: 1px 4px;
+}
+.dm-rich pre {
+  background: var(--glass-control); border-radius: var(--radius-s);
+  padding: 8px 10px; overflow-x: auto; margin: .5em 0;
+}
+.dm-rich pre code { background: none; padding: 0; }
+.dm-rich blockquote {
+  margin: .5em 0; padding-left: 10px;
+  border-left: 2px solid var(--glass-edge); color: var(--text-muted);
+}
+.dm-rich hr { border: 0; border-top: 1px solid var(--glass-edge); margin: .9em 0; }
+.dm-rich img { display: none; }   /* the CSP blocks remote images anyway */
 .dm-middle { justify-content: flex-start; }
 .dm-dup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 

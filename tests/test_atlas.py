@@ -1490,6 +1490,63 @@ class TestCollectionApi(LibraryFixture):
         self.assertEqual((row["rating"], row["notes"]), (5, "keep me"))
 
 
+class TestDescriptionHtml(unittest.TestCase):
+    """clean_html is the only thing between provider HTML and innerHTML."""
+
+    def test_keeps_structure(self):
+        out = sidecar.clean_html(
+            "<h2>Usage</h2><p>Weight <b>0.7</b>.</p><ul><li>one</li><li>two</li></ul>")
+        self.assertIn("<h2>Usage</h2>", out)
+        self.assertIn("<b>0.7</b>", out)
+        self.assertIn("<li>one</li>", out)
+
+    def test_drops_scripts_and_keeps_no_handlers(self):
+        out = sidecar.clean_html(
+            '<p onclick="steal()">hi</p><script>alert(1)</script>'
+            '<img src=x onerror="alert(1)">')
+        self.assertNotIn("script", out.lower())
+        self.assertNotIn("onclick", out.lower())
+        self.assertNotIn("onerror", out.lower())
+        self.assertIn("hi", out)
+
+    def test_strips_attributes_from_allowed_tags(self):
+        out = sidecar.clean_html('<p style="position:fixed" class="x" id="y">t</p>')
+        self.assertEqual(out, "<p>t</p>")
+
+    def test_link_schemes(self):
+        safe = sidecar.clean_html('<a href="https://example.com">go</a>')
+        self.assertIn('href="https://example.com"', safe)
+        self.assertIn('rel="noopener noreferrer nofollow"', safe)
+        for bad in ('javascript:alert(1)', 'data:text/html,<script>x</script>',
+                    'vbscript:x', '/relative'):
+            with self.subTest(href=bad):
+                out = sidecar.clean_html(f'<a href="{bad}">go</a>')
+                self.assertNotIn("href", out, f"{bad} should not survive")
+                self.assertIn("go", out, "link text should still be kept")
+
+    def test_unknown_tags_are_unwrapped_not_kept(self):
+        out = sidecar.clean_html("<marquee><iframe>text</iframe></marquee>")
+        self.assertNotIn("<", out.replace("&lt;", ""))
+        self.assertIn("text", out)
+
+    def test_stray_angle_bracket_is_escaped(self):
+        out = sidecar.clean_html("<p>1 < 2 and 3 > 2</p>")
+        self.assertIn("&lt; 2", out)
+
+    def test_empty_input(self):
+        self.assertEqual(sidecar.clean_html(""), "")
+        self.assertEqual(sidecar.clean_html(None), "")
+
+    def test_normalise_produces_both_forms(self):
+        fields = sidecar.normalise(
+            {"description": "<h3>Hi</h3><p>Line one</p>", "name": "N",
+             "baseModel": "SDXL"}, "n.safetensors")
+        self.assertIn("<h3>Hi</h3>", fields["description_html"])
+        # The plain field stays plain — the WebUI and the search index read it.
+        self.assertNotIn("<", fields["description"])
+        self.assertIn("Hi", fields["description"])
+
+
 class _StubHandle:
     """Enough of JobHandle for a task body to run outside the queue."""
 
