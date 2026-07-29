@@ -467,6 +467,83 @@ async function copyText(text, label) {
   } catch { toast('Clipboard blocked by the browser', 'error'); }
 }
 
+/* --- tinting the detail view from its preview --- */
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [h, s, l];
+}
+
+/** The most *present* colour in an image, not the average — averaging any real
+ *  picture returns mud.
+ *
+ *  Pixels are bucketed by hue and each bucket is weighted by saturation, so a
+ *  small area of strong colour outranks a large flat wash. Near-black,
+ *  near-white and near-grey pixels are dropped outright: they carry no usable
+ *  hue and, being most of a typical image, would win on count alone.
+ *  Returns null when there is nothing colourful enough to be worth using.
+ */
+function dominantColour(img) {
+  const N = 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = N;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let data;
+  try {
+    ctx.drawImage(img, 0, 0, N, N);
+    data = ctx.getImageData(0, 0, N, N).data;
+  } catch {
+    return null;                    // tainted canvas; previews are same-origin
+  }
+
+  const buckets = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 128) continue;
+    const [h, s, l] = rgbToHsl(data[i], data[i + 1], data[i + 2]);
+    if (l < 0.12 || l > 0.92 || s < 0.18) continue;
+    const key = Math.round(h * 24);            // 15-degree buckets
+    const acc = buckets.get(key) || { w: 0, h: 0, s: 0 };
+    acc.w += s; acc.h += h * s; acc.s += s * s;
+    buckets.set(key, acc);
+  }
+
+  let best = null;
+  for (const acc of buckets.values()) if (!best || acc.w > best.w) best = acc;
+  if (!best || best.w < 12) return null;       // too little colour to lean on
+  return { h: best.h / best.w, s: best.s / best.w };
+}
+
+/** Push a preview's dominant hue into the detail modal.
+ *
+ *  Only surfaces move: the panel wash, its edge, and the section labels. Body
+ *  text keeps its own token, because a hue taken from an arbitrary image is not
+ *  something to bet legibility on. Saturation is clamped so a violently
+ *  saturated preview cannot produce a garish panel, and the lightness stays
+ *  fixed per theme so contrast is unchanged whatever hue arrives.
+ */
+function tintDetailFromImage(img) {
+  const modal = $('detail-modal');
+  if (!modal) return;
+  const colour = dominantColour(img);
+  if (!colour) {
+    modal.style.removeProperty('--dm-h');
+    modal.style.removeProperty('--dm-s');
+    return;
+  }
+  modal.style.setProperty('--dm-h', String(Math.round(colour.h * 360)));
+  modal.style.setProperty('--dm-s',
+    `${Math.round(Math.min(0.72, Math.max(0.30, colour.s)) * 100)}%`);
+}
+
 /* --- left column: identity, image, actions --- */
 
 function detailLeft(model) {
@@ -491,6 +568,10 @@ function detailLeft(model) {
     `/media/${rel.split('/').map(encodeURIComponent).join('/')}${full ? '?full=1' : ''}`;
 
   if (model.previews && model.previews.length) {
+    // A tall, narrow image cannot fill a fixed-width frame, and the gap used to
+    // be flat near-black down both sides. The same image, blurred and
+    // over-scaled, fills it with the picture's own colour instead.
+    const fill = el('div', 'dm-media-fill');
     const img = el('img');
     img.alt = '';
     img.loading = 'lazy';
@@ -498,10 +579,12 @@ function detailLeft(model) {
     const show = (rel) => {
       const full = mediaUrl(rel, true);
       img.src = full;
+      fill.style.backgroundImage = `url("${full}")`;
       img.onclick = () => window.open(full, '_blank', 'noopener');
     };
+    img.addEventListener('load', () => tintDetailFromImage(img));
     show(model.previews[0]);
-    media.append(img);
+    media.append(fill, img);
     parts.push(media);
 
     // When a model ships several previews, offer the rest as a thumbnail strip.

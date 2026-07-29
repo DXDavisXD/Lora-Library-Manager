@@ -729,13 +729,29 @@ body.modal-open { overflow: hidden; }
    proportionate on any screen. (Gallery cards keep `cover` + top anchoring;
    there the crop is deliberate so faces stay visible in a fixed grid.) */
 .dm-media {
+  position: relative;
   width: 100%; border-radius: var(--radius); overflow: hidden;
   background: var(--bg-sunken);
   display: flex; align-items: center; justify-content: center;
   flex: 0 0 auto;
   min-height: 140px;
 }
+/* The letterbox filler. A portrait preview cannot fill a frame this wide, and
+   `contain` left flat near-black down both sides. This is the same image blown
+   up past the frame and blurred hard, so the gap carries the picture's own
+   colour instead of a dead band. Over-scaled because a blur of this radius
+   goes transparent at the edges and would otherwise show a soft border. */
+.dm-media-fill {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center;
+  filter: blur(34px) saturate(150%);
+  transform: scale(1.35);
+  opacity: .6;
+  pointer-events: none;
+}
+:root[data-theme="light"] .dm-media-fill { opacity: .45; }
 .dm-media img {
+  position: relative; z-index: 1;
   max-width: 100%; max-height: min(48vh, 460px);
   width: auto; height: auto;
   object-fit: contain;
@@ -1068,8 +1084,42 @@ textarea { border-radius: var(--radius-s); background-color: var(--glass-control
 
 /* ---- panels stack a second layer of glass ------------------------- */
 .panel { background: var(--glass-tint-2); }
-.detail-modal { background: var(--glass-tint-2); }
-.dm-middle { background: var(--glass-tint); }
+/* ---- the panel takes its colour from the preview -------------------
+   tintDetailFromImage() in app.js samples the visible preview and writes a hue
+   and a saturation here; these are the only two rules that read them. The
+   defaults are neutral, so a greyscale preview — or one with too little colour
+   to call a winner — leaves the panel exactly as it was.
+
+   Surfaces only. Body text keeps its own token: a hue lifted from an arbitrary
+   image is not something to stake legibility on, and the saturation arriving
+   here is already clamped so a violently saturated preview cannot produce a
+   garish panel.
+
+   The neutral values are var() fallbacks rather than declared defaults, so
+   each rule gets its own: with no hue the wash resolves to 0% saturation and
+   disappears, while the section labels resolve to the accent they always were.
+   A declared default would have forced both to the same number. */
+.detail-modal {
+  background:
+    linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .13) 0 0),
+    var(--glass-tint-2);
+  border-color: hsl(var(--dm-h, 0) var(--dm-s, 0%) 72% / .24);
+  transition: border-color var(--speed) ease;
+}
+.dm-middle {
+  background:
+    linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .07) 0 0),
+    var(--glass-tint);
+}
+.dm-section-title { color: hsl(var(--dm-h, 232) var(--dm-s, 82%) 76%); }
+:root[data-theme="light"] .detail-modal {
+  background:
+    linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .10) 0 0),
+    var(--glass-tint-2);
+}
+:root[data-theme="light"] .dm-section-title {
+  color: hsl(var(--dm-h, 232) var(--dm-s, 62%) 38%);
+}
 .modal-backdrop { backdrop-filter: blur(6px); }
 /* The pinned footer and the middle column were opaque panels, which read as
    solid slabs dropped onto a translucent sheet. They sit on the modal's own
