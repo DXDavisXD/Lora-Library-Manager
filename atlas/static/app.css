@@ -41,6 +41,13 @@
      transparent enough to read whatever sits behind the panel straight
      through the field; a scrim keeps them legible as inset surfaces. */
   --glass-control:  rgba(6, 7, 9, 0.42);
+  /* Buttons lighten rather than darken — they are raised surfaces, not inset
+     ones — and carry a much smaller blur than a panel, since they are only
+     ever a few millimetres of glass sitting on top of something else. */
+  --glass-btn:       rgba(255, 255, 255, 0.10);
+  --glass-btn-hover: rgba(255, 255, 255, 0.17);
+  --glass-accent:    rgba(124, 140, 255, 0.80);
+  --glass-btn-blur:  12px;
   --glass-blur:     28px;
   --glass-sat:      150%;
   --glass-shadow:   0 10px 34px -12px rgba(0, 0, 0, 0.7);
@@ -88,6 +95,9 @@
   --glass-edge:     rgba(255, 255, 255, 0.85);
   --glass-specular: rgba(255, 255, 255, 0.95);
   --glass-control:  rgba(255, 255, 255, 0.78);
+  --glass-btn:       rgba(255, 255, 255, 0.58);
+  --glass-btn-hover: rgba(255, 255, 255, 0.85);
+  --glass-accent:    rgba(79, 91, 213, 0.86);
   --glass-shadow:   0 10px 30px -14px rgba(15, 23, 42, 0.28);
 }
 
@@ -354,12 +364,13 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 .layout { display: flex; flex: 1 1 auto; min-height: 0; }
 
 .sidebar {
-  width: 236px; flex: 0 0 auto;
+  --sidebar-w: 236px;
+  width: var(--sidebar-w); flex: 0 0 auto; min-width: 0;
   background: var(--panel);
   border-right: 1px solid var(--border);
   overflow: hidden;
   display: flex; flex-direction: column;
-  transition: width var(--speed);
+  transition: width var(--speed) ease, border-right-width var(--speed) ease;
 }
 /* Filters scroll here; the quick-action block below stays put. */
 .sidebar-scroll {
@@ -372,10 +383,20 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
-/* Collapsed: the aside is removed from the flex row entirely and the grid
-   reflows to fill. display:none is used rather than width:0 because a flex
-   item's used main size resists collapsing reliably across engines. */
-body.sidebar-collapsed .sidebar { display: none; }
+/* Both panes hold the sidebar's full width no matter what the aside is doing,
+   so collapsing clips them instead of reflowing every label and count on the
+   way past. Without this the text re-wraps frame by frame as the width runs
+   down, which looks like the panel is disintegrating rather than sliding. */
+.sidebar-scroll, .sidebar-pinned { width: var(--sidebar-w); flex-shrink: 0; }
+
+/* Collapsed: the aside shrinks to nothing rather than being removed outright.
+   display:none cannot animate, and the snap was the one bit of the layout that
+   moved without being asked to. Width is animatable here because the panes
+   above are fixed-width, so nothing inside has to resolve as it goes. */
+body.sidebar-collapsed .sidebar {
+  width: 0;
+  border-right-width: 0;
+}
 .filter-group { display: flex; flex-direction: column; gap: 7px; }
 
 .stat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
@@ -896,15 +917,17 @@ body.modal-open { overflow: hidden; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1000px) {
-  /* On narrow screens the sidebar floats over the grid instead of squeezing it. */
+  /* On narrow screens the sidebar floats over the grid instead of squeezing it,
+     so here it slides out sideways rather than shrinking. */
   .sidebar {
-    position: fixed; inset: 44px auto 0 0; z-index: 30; width: 260px;
+    --sidebar-w: 260px;
+    position: fixed; inset: 44px auto 0 0; z-index: 30; width: var(--sidebar-w);
     box-shadow: var(--shadow);
-    transform: none; transition: transform var(--speed);
+    transform: none; transition: transform var(--speed) ease;
   }
   body.sidebar-collapsed .sidebar {
-    display: flex; width: 260px;
-    border-right: 1px solid var(--border);
+    width: var(--sidebar-w);
+    border-right-width: 1px;
     transform: translateX(-100%);
   }
 }
@@ -1006,8 +1029,33 @@ body.modal-open { overflow: hidden; }
 .card-thumb { border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
 
 /* ---- controls become pills --------------------------------------- */
-.btn { border-radius: var(--radius-pill); }
+/* Buttons carry their own small blur rather than only a tint. Most sit on a
+   glass panel where a tint alone would do, but several do not — the quick
+   actions over the ambient wash, the modal's footer row — and a button that
+   is glass in one place and flat in another reads as a bug. The blur is a
+   fraction of a panel's, and none of these are in the gallery's scroll path:
+   the card favourite star is not a .btn. */
+.btn {
+  border-radius: var(--radius-pill);
+  background: var(--glass-btn);
+  border-color: var(--glass-edge);
+  -webkit-backdrop-filter: blur(var(--glass-btn-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-btn-blur)) saturate(var(--glass-sat));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+.btn:hover { background: var(--glass-btn-hover); border-color: var(--glass-edge); }
 .btn.icon { border-radius: 50%; }
+/* Ghost stays see-through, but keeps the edge so it still reads as a control. */
+.btn.ghost { background: transparent; box-shadow: none; }
+.btn.ghost:hover { background: var(--glass-btn); }
+/* Accent buttons stay unmistakably accent, just no longer flat paint. */
+.btn.primary, .btn[aria-pressed="true"] {
+  background: var(--glass-accent);
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 var(--glass-specular);
+}
+.btn.primary:hover, .btn[aria-pressed="true"]:hover { background: var(--accent); }
+.btn[disabled] { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .tb-select, input[type="search"], input[type="text"], input[type="number"], select {
   border-radius: var(--radius-pill);
   background-color: var(--glass-control);
