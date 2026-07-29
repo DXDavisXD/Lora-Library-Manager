@@ -1898,7 +1898,7 @@ function applyTheme(theme) {
 /** Dark/light and solid/glass are independent axes.
  *
  *  `solid` is the default and is not a stripped-down glass: every rule in the
- *  Liquid Glass block is scoped to [data-surface="glass"], so on solid none of
+ *  Transparent block is scoped to [data-surface="glass"], so on solid none of
  *  them match and there is no backdrop to re-blur. Glass costs GPU work that a
  *  5000-model library may not want to spend, which is exactly why it is a
  *  choice rather than the only option.
@@ -1911,9 +1911,9 @@ function applySurface(surface) {
   if (button) {
     button.setAttribute('aria-pressed', String(glass));
     button.title = glass
-      ? 'Liquid Glass — translucent surfaces. Click for the lighter flat look.'
-      : 'Flat surfaces — the lightest option. Click for Liquid Glass.';
-    button.setAttribute('aria-label', glass ? 'Switch to flat surfaces' : 'Switch to glass surfaces');
+      ? 'Transparent — surfaces you can see through. Click for the lighter solid look.'
+      : 'Solid surfaces — the lightest option. Click for transparent.';
+    button.setAttribute('aria-label', glass ? 'Switch to solid surfaces' : 'Switch to transparent surfaces');
   }
   // The glass layout overlays the chrome, so the scroller's top inset only
   // applies on that surface — remeasure whenever it changes.

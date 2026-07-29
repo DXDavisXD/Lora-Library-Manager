@@ -69,7 +69,7 @@
 /* ---------- surface: glass -------------------------------------------------
    A second, independent axis. `data-theme` decides dark or light; this decides
    whether surfaces are painted or translucent. Everything below — and the whole
-   Liquid Glass block at the end of this file — hangs off it, so with the default
+   Transparent block at the end of this file — hangs off it, so with the default
    `solid` surface not one backdrop-filter rule matches and the browser has
    nothing extra to composite. That is what keeps the default cheap at 5000+
    models while the glass look stays available to anyone who wants it. */
@@ -343,7 +343,14 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 .tb-select:disabled {
   opacity: .45; cursor: not-allowed; color: var(--text-faint);
 }
-.topbar-actions { display: flex; gap: 8px; margin-left: 4px; flex: 0 0 auto; }
+.topbar-actions { display: flex; gap: 8px; margin-left: 4px; flex: 0 0 auto; align-items: stretch; }
+/* Icon buttons in the nav take their height from the text buttons beside them
+   rather than a hard-coded 32px, which left the round ones sitting short of the
+   pills. aspect-ratio keeps them circular at whatever height that turns out to
+   be, so the row stays aligned if the type ever changes. */
+.topbar-actions .btn.icon {
+  height: auto; width: auto; aspect-ratio: 1 / 1; padding: 0;
+}
 /* Width is set by balanceTopbar() in app.js; 0 until JS runs. */
 .topbar-edge-spacer { flex: 0 0 auto; width: 0; }
 
@@ -886,10 +893,28 @@ body.modal-open { overflow: hidden; }
 .dm-dup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 
 .dm-stars { display: flex; gap: 4px; }
-.dm-star { background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-faint); }
-.dm-star svg { width: 26px; height: 26px; fill: currentColor; }
+/* An unfilled star used to be a flat --text-faint fill, which over a dark panel
+   — or a tinted one, where the wash lifts the background toward the star's own
+   grey — left "rated 2" and "rated 4" nearly impossible to tell apart. Empty
+   stars are now hollow and filled ones are solid, so the count reads from the
+   shape rather than from a brightness difference. */
+.dm-star {
+  background: none; border: none; padding: 2px; cursor: pointer;
+  color: var(--text-faint);
+  transition: color var(--speed), transform var(--speed);
+}
+.dm-star svg {
+  width: 26px; height: 26px;
+  fill: none; stroke: currentColor; stroke-width: 1.6px;
+  stroke-linejoin: round;
+}
 .dm-star.on { color: var(--warn); }
-.dm-star:hover { color: var(--warn); }
+.dm-star.on svg { fill: currentColor; stroke: currentColor; }
+.dm-star:hover { color: var(--warn); transform: scale(1.12); }
+/* A rated star needs to survive being drawn over artwork and over a tinted
+   panel, so it carries its own contrast rather than relying on the backdrop. */
+.dm-star.on svg { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45)); }
+:root[data-theme="light"] .dm-star { color: var(--border-strong); }
 
 .dm-collection { display: flex; flex-direction: column; gap: 10px; }
 .dm-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -1104,7 +1129,7 @@ body.modal-open { overflow: hidden; }
 }
 
 /* ===================================================================
-   Liquid Glass — an opt-in surface, not the default
+   Transparent — an opt-in surface, not the default
    -------------------------------------------------------------------
    Every rule here is scoped to [data-surface="glass"]. On the default
    `solid` surface not one of them matches, so the browser has no extra
@@ -1208,7 +1233,11 @@ body.modal-open { overflow: hidden; }
   border-color: var(--glass-btn-edge);
   -webkit-backdrop-filter: blur(var(--glass-btn-blur)) saturate(var(--glass-sat));
   backdrop-filter: blur(var(--glass-btn-blur)) saturate(var(--glass-sat));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  /* Deliberately no inset highlight. A panel gets one because light catches its
+     top edge; on a pill the same shadow traces the entire rounded rim and lands
+     just inside the border, so the control reads as two concentric rings with a
+     tinted gap between them. Tint plus one border is the whole treatment. */
+  box-shadow: none;
 }
 :root[data-surface="glass"] .btn:hover {
   background: var(--glass-btn-hover);
@@ -1228,7 +1257,7 @@ body.modal-open { overflow: hidden; }
 :root[data-surface="glass"] .btn[aria-pressed="true"] {
   background: var(--glass-accent);
   border-color: transparent;
-  box-shadow: inset 0 1px 0 var(--glass-specular);
+  box-shadow: none;
 }
 :root[data-surface="glass"] .btn.primary:hover,
 :root[data-surface="glass"] .btn[aria-pressed="true"]:hover { background: var(--accent); }
@@ -1349,8 +1378,7 @@ body.modal-open { overflow: hidden; }
 :root[data-theme="light"][data-surface="glass"] input[type="search"],
 :root[data-theme="light"][data-surface="glass"] .btn {
   border-color: rgba(15, 23, 42, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75),
-              0 1px 2px -1px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 1px 2px -1px rgba(15, 23, 42, 0.18);
 }
 
 /* Reduced transparency: a real accessibility setting on iOS, and the same
