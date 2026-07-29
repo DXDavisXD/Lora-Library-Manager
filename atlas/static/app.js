@@ -33,7 +33,8 @@ const EMPTY_FILTERS = {
 const state = {
   filters: { ...EMPTY_FILTERS },
   pageSize: 120,
-  total: 0,
+  total: 0,                // rows matching the current filters
+  libraryTotal: 0,         // rows in the library, for the "N of M" brand count
   items: new Map(),        // absolute index -> model
   pending: new Set(),      // page numbers in flight
   columns: 1,
@@ -1133,14 +1134,26 @@ function renderStats(stats) {
     li.append(el('span', 'k', key), el('span', `v ${cls}`.trim(), String(value)));
     return li;
   }));
-  $('brand-count').textContent = `${stats.total} models`;
+  state.libraryTotal = stats.total;
+  updateResultCount();
 }
 
+/** The brand carries the count for both states.
+ *
+ * There used to be a bar of its own under the top bar whose entire job was to
+ * repeat a number the brand was already showing. Unfiltered it reads "107
+ * models"; filtered it narrows to "24 of 107", which is the only case where
+ * the result count said anything the brand did not.
+ */
 function updateResultCount() {
   const active = Object.entries(state.filters)
     .filter(([key, value]) => value && key !== 'sort').length;
-  $('result-count').textContent = state.total === 1
-    ? '1 model' : `${state.total.toLocaleString()} models`;
+  const total = state.libraryTotal;
+  const shown = state.total;
+  const label = (n) => `${n.toLocaleString()} model${n === 1 ? '' : 's'}`;
+  $('brand-count').textContent = (active && total && shown !== total)
+    ? `${shown.toLocaleString()} of ${label(total)}`
+    : label(total || shown);
   $('clear-filters').hidden = active === 0;
 }
 
@@ -1828,13 +1841,9 @@ function setChromeMetrics() {
   const px = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0);
   const topbar = px(document.querySelector('.topbar'));
   const status = px(document.querySelector('.status-strip'));
-  // The result bar only exists on the gallery view; the manage view has none.
-  const bar = document.querySelector('#view-gallery .result-bar');
-  const resultbar = bar && !bar.closest('[hidden]') ? px(bar) : 0;
   const root = document.documentElement.style;
   if (topbar) root.setProperty('--topbar-h', `${topbar}px`);
   if (topbar) root.setProperty('--chrome-h', `${topbar + status}px`);
-  root.setProperty('--resultbar-h', `${resultbar}px`);
 }
 
 /** Re-run the balance and the chrome measurements whenever the bar's width

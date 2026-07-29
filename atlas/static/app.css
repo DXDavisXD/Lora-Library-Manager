@@ -346,6 +346,9 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 .status-bar { flex: 1 1 auto; height: 4px; background: var(--bg-sunken); border-radius: 99px; overflow: hidden; max-width: 320px; }
 .status-fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .25s ease; }
 .status-meta { color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Rehomed from the row that used to sit under the top bar; pinned right so it
+   never jostles the job status when it appears. */
+#clear-filters { margin-left: auto; flex: 0 0 auto; }
 
 /* ---------- layout ---------- */
 .layout { display: flex; flex: 1 1 auto; min-height: 0; }
@@ -387,12 +390,6 @@ body.sidebar-collapsed .sidebar { display: none; }
 
 .content { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 
-.result-bar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 18px; border-bottom: 1px solid var(--border);
-  color: var(--text-muted); font-size: 13px;
-  flex: 0 0 auto;
-}
 /* ---------- virtualised grid ---------- */
 .scroller { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; padding: 18px; position: relative; }
 .spacer { position: relative; width: 100%; }
@@ -796,8 +793,16 @@ body.modal-open { overflow: hidden; }
    below gets the room. */
 .dm-notes { min-height: 60px; height: 60px; flex: 0 0 auto; resize: none; }
 
-.dm-group-editor { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 90px; }
-.dm-group-input { flex: 1 1 auto; min-height: 80px; font-size: 12.5px; line-height: 1.5; resize: none; }
+/* The editor and the official-trigger list above it are both flexible, and the
+   column cannot scroll. With enough tags and trigger groups their min-heights
+   added up past the column and the Copy row — last child, and the only one
+   that must never move — was the part that got clipped off the bottom. Floors
+   are low enough now that the flexible pair always yields to it first. */
+.dm-group-editor {
+  display: flex; flex-direction: column; gap: 6px;
+  flex: 1 1 auto; min-height: 74px;
+}
+.dm-group-input { flex: 1 1 auto; min-height: 48px; font-size: 12.5px; line-height: 1.5; resize: none; }
 .dm-group-row { display: flex; justify-content: flex-end; flex: 0 0 auto; }
 
 /* Tags: cap the height and fade the overflow so it reads as "more below"
@@ -808,20 +813,24 @@ body.modal-open { overflow: hidden; }
   scrollbar-width: none;                    /* the fade is the affordance */
 }
 .dm-tags-scroll::-webkit-scrollbar { width: 0; height: 0; }
-/* The fade is anchored to the chip box, not the whole section, so it always
-   ends where the chips end and never bleeds over the button underneath. */
+/* The overflow hint is a mask, not a gradient painted on top. Overlaying a
+   solid --panel wash only works when the surface behind really is that colour;
+   on a translucent panel it deposits a dark band across the last row and the
+   chips under it read as disabled. Masking fades the chips themselves, so it
+   is correct whatever shows through. */
 .dm-tags-box { position: relative; }
-.dm-tags-wrap.has-more .dm-tags-box::after {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
-  background: linear-gradient(to top, var(--panel) 15%, transparent);
-  pointer-events: none;
+.dm-tags-wrap.has-more .dm-tags-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
 }
-.dm-tags-wrap.expanded .dm-tags-scroll { max-height: 260px; }
-.dm-tags-wrap.expanded .dm-tags-box::after { opacity: 0; }
+.dm-tags-wrap.expanded .dm-tags-scroll {
+  max-height: 260px;
+  -webkit-mask-image: none; mask-image: none;
+}
 .dm-tags-more {
   display: flex; align-items: center; gap: 5px; margin: 6px auto 0;
   padding: 3px 12px; border-radius: 999px;
-  border: 1px solid var(--border-strong); background: var(--bg-raised);
+  border: 1px solid var(--glass-edge); background: var(--glass-control);
   color: var(--text-muted); font: inherit; font-size: 11.5px;
   cursor: pointer; transition: background var(--speed), color var(--speed);
 }
@@ -942,7 +951,7 @@ body.modal-open { overflow: hidden; }
       each one would re-composite the backdrop 45 times a frame.
    =================================================================== */
 
-.glass, .topbar, .status-strip, .sidebar, .result-bar, .panel, .detail-modal {
+.glass, .topbar, .status-strip, .sidebar, .panel, .detail-modal {
   background: var(--glass-tint);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
@@ -950,7 +959,7 @@ body.modal-open { overflow: hidden; }
 }
 
 /* The specular line: light catching the top edge of a raised pane. */
-.topbar, .sidebar, .result-bar, .panel, .detail-modal {
+.topbar, .sidebar, .panel, .detail-modal {
   box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
 }
 
@@ -970,12 +979,8 @@ body.modal-open { overflow: hidden; }
 .layout { position: relative; }
 .content { position: relative; }
 .sidebar { padding-top: var(--chrome-h, 92px); border-right: 1px solid var(--glass-edge); }
-.result-bar {
-  position: absolute; top: var(--chrome-h, 92px); left: 0; right: 0; z-index: 20;
-  border-bottom: 1px solid var(--glass-edge);
-}
 .scroller {
-  padding-top: calc(var(--chrome-h, 92px) + var(--resultbar-h, 45px) + 18px);
+  padding-top: calc(var(--chrome-h, 92px) + 18px);
 }
 .manage-scroll { padding-top: calc(var(--chrome-h, 92px) + 18px); }
 
@@ -1009,19 +1014,25 @@ body.modal-open { overflow: hidden; }
   border-color: var(--glass-edge);
 }
 textarea { border-radius: var(--radius-s); background-color: var(--glass-control); }
-.chip { border-radius: var(--radius-pill); }
+/* Chips keep their squircle. A pill radius turns a one-line tag into a lozenge
+   and a multi-line trigger group into an oval, which is the shape this was
+   explicitly moved away from — so the pill treatment stops at controls. */
 
 /* ---- panels stack a second layer of glass ------------------------- */
 .panel { background: var(--glass-tint-2); }
 .detail-modal { background: var(--glass-tint-2); }
 .dm-middle { background: var(--glass-tint); }
 .modal-backdrop { backdrop-filter: blur(6px); }
+/* The pinned footer and the middle column were opaque panels, which read as
+   solid slabs dropped onto a translucent sheet. They sit on the modal's own
+   glass, so they only need a tint to separate from it. */
+.dm-actions { background: var(--glass-tint); border-top-color: var(--glass-edge); }
 
 /* Reduced transparency: a real accessibility setting on iOS, and the same
    people who turn it on there want it here. Drops every blur and falls back
    to solid panels. */
 @media (prefers-reduced-transparency: reduce) {
-  .glass, .topbar, .status-strip, .sidebar, .result-bar, .panel, .detail-modal,
+  .glass, .topbar, .status-strip, .sidebar, .panel, .detail-modal,
   .tb-select, input[type="search"], input[type="text"], input[type="number"],
   select, textarea, .modal-backdrop {
     -webkit-backdrop-filter: none;

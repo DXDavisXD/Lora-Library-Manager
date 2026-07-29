@@ -91,6 +91,9 @@
   <div class="status-bar" id="status-bar"><div class="status-fill" id="status-fill"></div></div>
   <span class="status-meta" id="status-meta"></span>
   <button type="button" class="btn tiny" id="status-cancel" hidden>Cancel</button>
+  <!-- Clear filters lives here rather than in a row of its own. The count it
+       used to sit beside is shown by the brand, which already had it. -->
+  <button type="button" class="btn tiny ghost" id="clear-filters" hidden>Clear filters</button>
 </div>
 
 <main class="layout">
@@ -124,11 +127,6 @@
 
   <!-- Gallery -------------------------------------------------------------->
   <section class="content" id="view-gallery">
-    <div class="result-bar">
-      <span id="result-count">Loading…</span>
-      <button type="button" class="btn tiny ghost" id="clear-filters" hidden>Clear filters</button>
-    </div>
-
     <!-- The scroller holds a single spacer sized to the full result set; only
          the visible window of cards is ever in the DOM. -->
     <div class="scroller" id="scroller" tabindex="-1">
