@@ -1618,6 +1618,9 @@ function showView(name) {
   $('view-manage').hidden = name !== 'manage';
   $('nav-gallery').setAttribute('aria-pressed', String(name === 'gallery'));
   $('nav-manage').setAttribute('aria-pressed', String(name === 'manage'));
+  // The result bar exists only on the gallery, so the scroller's top inset
+  // changes with the view.
+  setChromeMetrics();
   if (name === 'manage') {
     refreshManage();
   } else {
@@ -1812,12 +1815,36 @@ function balanceTopbar() {
   spacer.style.width = `${Math.max(0, Math.round(diff))}px`;
 }
 
-/** Re-run the balance above whenever the bar's width changes (window resize)
- *  or the brand's own width changes (the "N models" count grows a digit). */
+/** Publish the chrome's measured heights as CSS variables.
+ *
+ * The top bar and status strip are translucent and overlay the content so it
+ * scrolls underneath them — that movement behind the blur is the whole point of
+ * the material. Which means the scroller has to reserve their height as top
+ * padding, and the bar wraps to two and three rows as the window narrows, so
+ * the numbers cannot be hard-coded. The CSS carries fallbacks for the first
+ * frame, before this has run.
+ */
+function setChromeMetrics() {
+  const px = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0);
+  const topbar = px(document.querySelector('.topbar'));
+  const status = px(document.querySelector('.status-strip'));
+  // The result bar only exists on the gallery view; the manage view has none.
+  const bar = document.querySelector('#view-gallery .result-bar');
+  const resultbar = bar && !bar.closest('[hidden]') ? px(bar) : 0;
+  const root = document.documentElement.style;
+  if (topbar) root.setProperty('--topbar-h', `${topbar}px`);
+  if (topbar) root.setProperty('--chrome-h', `${topbar + status}px`);
+  root.setProperty('--resultbar-h', `${resultbar}px`);
+}
+
+/** Re-run the balance and the chrome measurements whenever the bar's width
+ *  changes (window resize) or the brand's own width changes (the "N models"
+ *  count grows a digit). */
 function observeTopbarBalance() {
   if (typeof ResizeObserver === 'undefined') return;
-  const observer = new ResizeObserver(() => balanceTopbar());
+  const observer = new ResizeObserver(() => { balanceTopbar(); setChromeMetrics(); });
   observer.observe(document.querySelector('.topbar'));
+  observer.observe(document.querySelector('.status-strip'));
   observer.observe($('brand-count'));
 }
 
@@ -1853,7 +1880,8 @@ async function init() {
     $('topbar-sort-select').value = state.filters.sort;
 
     renderStats(boot.stats);
-    balanceTopbar();   // brand-count just got its first real text — settle once
+    balanceTopbar();      // brand-count just got its first real text — settle once
+    setChromeMetrics();   // and the bar's final height is now known
     renderActions(boot.actions, boot.action_groups);
     renderProviders(boot.providers);
     renderSettings(boot.settings);
