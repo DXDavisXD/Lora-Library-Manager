@@ -40,6 +40,9 @@ class ModelInfo:
     version_name: str = ""
     creator: str = ""
     description: str = ""
+    # The provider's own markup, kept beside the flattened text so the
+    # detail panel can show headings and lists instead of one paragraph.
+    description_html: str = ""
     base_model: str = ""
     trained_words: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)

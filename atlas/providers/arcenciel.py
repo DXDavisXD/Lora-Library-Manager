@@ -201,6 +201,8 @@ class ArcencielProvider(ProviderBase):
             version_name=str(version.get("versionName") or ""),
             creator=creator,
             description=description,
+            description_html=str(model.get("description")
+                                 or version.get("aboutThisVersion") or ""),
             base_model=str(version.get("baseModel") or ""),
             trained_words=triggers,
             tags=tags,

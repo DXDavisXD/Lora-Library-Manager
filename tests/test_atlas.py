@@ -1577,6 +1577,47 @@ class TestDescriptionHtml(unittest.TestCase):
         self.assertEqual(sidecar.clean_html(""), "")
         self.assertEqual(sidecar.clean_html(None), "")
 
+    def test_html_is_found_under_model_when_top_level_is_flattened(self):
+        """Regression: real sidecars hold the description twice.
+
+        write_metadata_sidecar puts the flattened text at the top level for the
+        WebUI and leaves the provider's markup nested under `model`. Preferring
+        the first non-empty candidate therefore always picked the flat copy, so
+        the formatting fix silently did nothing on every existing library.
+        """
+        fields = sidecar.normalise({
+            "name": "N", "baseModel": "SDXL",
+            "description": "Order a commission here! Support my work by ...",
+            "model": {"name": "N",
+                      "description": "<p>Order a commission here!</p>"
+                                     "<ul><li>Support my work</li></ul>"},
+        }, "n.safetensors")
+        self.assertIn("<ul>", fields["description_html"])
+        self.assertIn("<li>Support my work</li>", fields["description_html"])
+        self.assertNotIn("<", fields["description"])
+
+    def test_richest_prefers_markup_over_order(self):
+        self.assertIn("<p>", sidecar._richest("plain text", "<p>rich</p>"))
+        self.assertIn("<p>", sidecar._richest("<p>rich</p>", "plain text"))
+        # No markup anywhere: first non-empty wins.
+        self.assertEqual(sidecar._richest("", "first", "second"), "first")
+        self.assertEqual(sidecar._richest("", None), "")
+
+    def test_refresh_without_markup_keeps_markup_on_disk(self):
+        """A provider that returns no HTML must not blank what is already there."""
+        model = Path(self.__class__.__name__)  # placeholder, replaced below
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            m = d / "n.safetensors"
+            m.write_bytes(b"x")
+            sidecar.write_metadata_sidecar(
+                m, {"name": "N", "description_html": "<p>kept</p>"}, raw={})
+            sidecar.write_metadata_sidecar(
+                m, {"name": "N", "description_html": ""}, raw={})
+            data = json.loads((d / "n.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["description_html"], "<p>kept</p>")
+
     def test_normalise_produces_both_forms(self):
         fields = sidecar.normalise(
             {"description": "<h3>Hi</h3><p>Line one</p>", "name": "N",

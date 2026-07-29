@@ -99,6 +99,7 @@ def info_to_fields(info: ModelInfo) -> dict[str, Any]:
         "creator": info.creator,
         "base_model": info.base_model,
         "description": info.description,
+        "description_html": info.description_html,
         "trained_words": info.trained_words,
         "tags": info.tags,
         "preferred_weight": info.preferred_weight,

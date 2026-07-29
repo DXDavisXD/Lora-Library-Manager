@@ -118,6 +118,8 @@ class CivitaiProvider(ProviderBase):
 
         if not info.description:
             info.description = clean_text(parent.get("description"))
+        if not info.description_html:
+            info.description_html = str(parent.get("description") or "")
         if not info.creator:
             creator = parent.get("creator")
             info.creator = str((creator or {}).get("username", "") if isinstance(creator, dict)
@@ -247,6 +249,9 @@ class CivitaiProvider(ProviderBase):
             version_name=str(version.get("name") or ""),
             creator=str(creator or ""),
             description=clean_text(version.get("description") or parent.get("description")),
+            # Kept unflattened; sanitised later, once, in sidecar.clean_html.
+            description_html=str(version.get("description")
+                                 or parent.get("description") or ""),
             base_model=str(version.get("baseModel") or ""),
             trained_words=[str(w) for w in (version.get("trainedWords") or []) if w],
             tags=[str(t) for t in (parent.get("tags") or []) if t],

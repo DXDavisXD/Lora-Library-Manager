@@ -166,6 +166,25 @@ _TAG_RE = re.compile(r"<(/?)([a-zA-Z0-9]+)([^>]*)>")
 _HREF_RE = re.compile(r"""href\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))""", re.I)
 
 
+def _richest(*candidates: Any) -> str:
+    """Pick the candidate that still carries markup, else the first non-empty.
+
+    A sidecar usually holds the description twice: once flattened at the top
+    level, where write_metadata_sidecar puts the plain text the WebUI reads,
+    and once as the provider wrote it under ``model``. Taking the first
+    non-empty candidate therefore reliably picked the flattened copy and threw
+    the formatting away — which is exactly what it looked like from the outside:
+    a fix that changed nothing.
+    """
+    for candidate in candidates:
+        if candidate and "<" in str(candidate):
+            return str(candidate)
+    for candidate in candidates:
+        if candidate:
+            return str(candidate)
+    return ""
+
+
 def clean_html(value: Any, limit: int = 20000) -> str:
     """Reduce provider HTML to a small, safe subset for display."""
     if not value:
@@ -388,9 +407,10 @@ def normalise(raw: dict[str, Any], filename: str) -> dict[str, Any]:
         # what the search index tokenises. The formatted version rides alongside
         # for our own detail panel.
         "description": clean_text(raw.get("description") or model.get("description")),
-        "description_html": clean_html(
-            raw.get("description_html")
-            or raw.get("description") or model.get("description")),
+        "description_html": clean_html(_richest(
+            raw.get("description_html"),
+            model.get("description"),
+            raw.get("description"))),
         "trained_words": triggers,
         "tags": tags,
         "preferred_weight": weight,
@@ -754,8 +774,10 @@ def write_metadata_sidecar(model_path: Path, fields: dict[str, Any],
         "version_name": fields.get("version_name", ""),
         "creator": fields.get("creator", ""),
         "description": fields.get("description") or record.get("description", ""),
+        # Only ever replaced by something non-empty: a refresh that did not
+        # carry markup must not wipe markup already on disk.
         "description_html": (fields.get("description_html")
-                             or record.get("description_html", "")),
+                             or record.get("description_html") or ""),
         "base_model": fields.get("base_model", ""),
         "trained_words": fields.get("trained_words", []),
         "tags": fields.get("tags", []),
