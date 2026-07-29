@@ -36,6 +36,8 @@ const state = {
   pageSize: 120,
   total: 0,                // rows matching the current filters
   libraryTotal: 0,         // rows in the library, for the "N of M" brand count
+  baseModels: [],          // facet data the top-bar pickers read on open
+  sorts: [],
   items: new Map(),        // absolute index -> model
   pending: new Set(),      // page numbers in flight
   columns: 1,
@@ -579,6 +581,47 @@ function tintDetailFromImage(img) {
   modal.style.setProperty('--dm-s2', sat(colour.s2 ?? colour.s));
 }
 
+/** Full-size preview, in the page rather than a new tab.
+ *
+ *  A new window loses the app, the scroll position and the open model, and on
+ *  a second monitor it opens somewhere you were not looking. This is one
+ *  element, created on demand and reused, so it costs nothing until used.
+ */
+function openLightbox(src) {
+  let box = $('lightbox');
+  if (!box) {
+    box = el('div', 'lightbox');
+    box.id = 'lightbox';
+    const img = el('img');
+    img.alt = '';
+    img.id = 'lightbox-img';
+    const close = el('button', 'lightbox-close', '✕');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close image');
+    box.append(img, close);
+    // Clicking the backdrop closes; clicking the picture itself does not, so a
+    // mis-aimed click while looking at detail does not throw you out.
+    box.onclick = (event) => { if (event.target !== img) hideLightbox(); };
+    document.body.append(box);
+  }
+  $('lightbox-img').src = src;
+  box.hidden = false;
+  document.addEventListener('keydown', lightboxKeys, true);
+}
+
+function hideLightbox() {
+  const box = $('lightbox');
+  if (box) box.hidden = true;
+  document.removeEventListener('keydown', lightboxKeys, true);
+}
+
+/** Escape closes the image without also closing the detail panel underneath. */
+function lightboxKeys(event) {
+  if (event.key !== 'Escape') return;
+  event.stopPropagation();
+  hideLightbox();
+}
+
 /* --- left column: identity, image, actions --- */
 
 function detailLeft(model) {
@@ -615,7 +658,7 @@ function detailLeft(model) {
       const full = mediaUrl(rel, true);
       img.src = full;
       fill.style.backgroundImage = `url("${full}")`;
-      img.onclick = () => window.open(full, '_blank', 'noopener');
+      img.onclick = () => openLightbox(full);
     };
     img.addEventListener('load', () => tintDetailFromImage(img));
     show(model.previews[0]);
@@ -1038,10 +1081,12 @@ function editableList(model, field, placeholder, readKey = null) {
  *  "＋ New…" row in the list is one more thing to scroll past, and it invites a
  *  duplicate of something already there a few rows below.
  */
-function searchPicker({ placeholder, emptyLabel, options, value, onPick, onCreate }) {
-  const wrap = el('div', 'picker');
+function searchPicker({ placeholder, emptyLabel, options, value, onPick, onCreate,
+                       compact = false, title = '', allowEmpty = true }) {
+  const wrap = el('div', `picker${compact ? ' picker-compact' : ''}`);
   const button = el('button', 'picker-button');
   button.type = 'button';
+  if (title) button.title = title;
   const caret = el('span', 'picker-caret', '▾');
   const text = el('span', 'picker-value');
   button.append(text, caret);
@@ -1076,11 +1121,15 @@ function searchPicker({ placeholder, emptyLabel, options, value, onPick, onCreat
     const matches = options().filter((o) => o.name.toLowerCase().includes(query));
     list.replaceChildren();
 
-    const none = el('button', `picker-item${selected ? '' : ' on'}`);
-    none.type = 'button';
-    none.append(el('span', 'picker-item-name', emptyLabel));
-    none.onclick = () => choose('');
-    if (!query) list.append(none);
+    // Sort has no "none" — every list is sorted somehow — and its empty label
+    // is a real option's label, so offering both listed the same entry twice.
+    if (allowEmpty && !query) {
+      const none = el('button', `picker-item${selected ? '' : ' on'}`);
+      none.type = 'button';
+      none.append(el('span', 'picker-item-name', emptyLabel));
+      none.onclick = () => choose('');
+      list.append(none);
+    }
 
     matches.forEach((o) => {
       const row = el('button', `picker-item${o.name === selected ? ' on' : ''}`);
@@ -1106,6 +1155,7 @@ function searchPicker({ placeholder, emptyLabel, options, value, onPick, onCreat
   };
 
   button.onclick = () => {
+    if (button.disabled) return;
     if (!panel.hidden) return close();
     panel.hidden = false;
     button.setAttribute('aria-expanded', 'true');
@@ -1126,8 +1176,20 @@ function searchPicker({ placeholder, emptyLabel, options, value, onPick, onCreat
 
   return {
     node: wrap,
+    button,
     get value() { return selected; },
     set value(v) { selected = v || ''; paintValue(); },
+    /* Greyed rather than removed, exactly as the old select was: the bar keeps
+       its shape, and a control you can see but not use still says the concept
+       exists. */
+    set disabled(v) {
+      button.disabled = !!v;
+      wrap.classList.toggle('is-disabled', !!v);
+      if (v) close();
+    },
+    get disabled() { return button.disabled; },
+    set title(v) { button.title = v || ''; },
+    setEmptyLabel(v) { emptyLabel = v; paintValue(); },
     refresh: paintList,
   };
 }
@@ -1381,8 +1443,7 @@ function updateResultCount() {
 async function refreshFacets() {
   try {
     const data = await apiGet('/api/facets');
-    fillSelect($('filter-base'), data.base_models.map(
-      (b) => ({ value: b.value, label: `${b.value} (${b.count})` })), 'All');
+    state.baseModels = data.base_models || [];
     applyCategories(data.categories || [], data.uncategorised ?? 0);
     const stats = await apiGet('/api/stats');
     renderStats(stats);
@@ -1396,21 +1457,81 @@ async function refreshFacets() {
  *  so identity lives on the element, where nothing can collide with it. */
 const UNCATEGORISED = 'uncategorised';
 
+/* The four top-bar controls, as pickers rather than native selects.
+   Built once, on first use, and mounted into the placeholder divs. Options are
+   read through a callback each time a panel opens, so nothing has to be
+   re-populated when the facets change — the old fillSelect/replaceChildren
+   dance goes away with them. */
+const topPick = {};
+
+function buildTopbarPickers() {
+  if (topPick.category) return;
+
+  topPick.category = searchPicker({
+    compact: true, title: 'Category',
+    placeholder: 'Search categories…',
+    emptyLabel: 'All categories',
+    options: () => {
+      const out = (state.categories || []).map((c) => ({ name: c.name, count: c.count }));
+      // Last, and only when there is something in it: the pile you have not
+      // filed yet is the one you actually want while organising.
+      if (state.uncategorised) {
+        out.push({ name: 'Uncategorized', count: state.uncategorised, value: UNCATEGORISED });
+      }
+      return out;
+    },
+    onPick: (name) => {
+      state.filters.category = name === 'Uncategorized' ? UNCATEGORISED : name;
+      state.filters.uncategorised = state.filters.category === UNCATEGORISED;
+      state.filters.subcategory = '';
+      state.filters.collection = '';
+      topPick.subcategory.value = '';
+      paintSubcategories();
+      resetResults();
+    },
+  });
+  $('filter-category').append(topPick.category.node);
+
+  topPick.subcategory = searchPicker({
+    compact: true, title: 'Sub-category',
+    placeholder: 'Search sub-categories…',
+    emptyLabel: 'All',
+    options: () => {
+      const found = (state.categories || [])
+        .find((c) => c.name === state.filters.category);
+      return (found ? found.subcategories : []).map((sc) => ({ name: sc.name, count: sc.count }));
+    },
+    onPick: (name) => { state.filters.subcategory = name; resetResults(); },
+  });
+  $('filter-subcategory').append(topPick.subcategory.node);
+
+  topPick.base = searchPicker({
+    compact: true, title: 'Base model',
+    placeholder: 'Search base models…',
+    emptyLabel: 'All base models',
+    options: () => (state.baseModels || []).map((b) => ({ name: b.value, count: b.count })),
+    onPick: (name) => { state.filters.base_model = name; resetResults(); },
+  });
+  $('filter-base').append(topPick.base.node);
+
+  topPick.sort = searchPicker({
+    compact: true, title: 'Sort', allowEmpty: false,
+    placeholder: 'Search sorts…',
+    emptyLabel: 'Name (A–Z)',
+    options: () => (state.sorts || []).map((o) => ({ name: o.label, value: o.value })),
+    onPick: (label) => {
+      const found = (state.sorts || []).find((o) => o.label === label);
+      state.filters.sort = found ? found.value : 'name';
+      resetResults();
+    },
+  });
+  $('topbar-sort-select').append(topPick.sort.node);
+}
+
 function applyCategories(categories, uncategorised = null) {
   state.categories = categories;
   if (uncategorised !== null) state.uncategorised = uncategorised;
-  const catSel = $('filter-category');
-  const prev = catSel.value;
-  catSel.replaceChildren(new Option('All categories', ''));
-  categories.forEach((c) => catSel.append(new Option(`${c.name} (${c.count})`, c.name)));
-  // Last, and only when there is something in it: the pile you have not filed
-  // yet is the one you actually want to open while organising.
-  if (state.uncategorised) {
-    const opt = new Option(`Uncategorized (${state.uncategorised})`, UNCATEGORISED);
-    opt.dataset.uncategorised = '1';
-    catSel.append(opt);
-  }
-  if ([...catSel.options].some((o) => o.value === prev)) catSel.value = prev;
+  buildTopbarPickers();
   paintSubcategories();
 }
 
@@ -1421,30 +1542,26 @@ function applyCategories(categories, uncategorised = null) {
  * picked anything.
  */
 function paintSubcategories() {
+  if (!topPick.subcategory) return;
   const cat = state.filters.category;
-  const subSel = $('filter-subcategory');
-  const found = state.categories.find((c) => c.name === cat);
+  const found = (state.categories || []).find((c) => c.name === cat);
   const subs = found ? found.subcategories : [];
   const usable = !!cat && subs.length > 0;
-  subSel.disabled = !usable;
-  subSel.title = !cat ? 'Pick a category first'
+
+  topPick.category.value = cat === UNCATEGORISED ? 'Uncategorized' : cat;
+  topPick.subcategory.disabled = !usable;
+  topPick.subcategory.title = !cat ? 'Pick a category first'
     : cat === UNCATEGORISED ? 'Models in no collection have no sub-categories'
     : usable ? 'Sub-category' : `"${cat}" has no sub-categories`;
+  topPick.subcategory.setEmptyLabel(
+    !cat ? 'All' : cat === UNCATEGORISED ? '—' : usable ? `All of ${cat}` : 'No sub-categories');
+  if (!usable) topPick.subcategory.value = '';
+
   // Rename and delete target whatever is currently selected. "Uncategorized"
   // is a query, not a collection — there is nothing on disk to rename or delete.
   const real = !!cat && cat !== UNCATEGORISED;
   $('delete-category').disabled = !real;
   $('rename-category').disabled = !real;
-  if (!usable) {
-    subSel.replaceChildren(new Option(
-      !cat ? 'All' : cat === UNCATEGORISED ? '—' : 'No sub-categories', ''));
-    subSel.value = '';
-    return;
-  }
-  const prev = state.filters.subcategory;
-  subSel.replaceChildren(new Option(`All of ${cat}`, ''));
-  subs.forEach((s) => subSel.append(new Option(`${s.name} (${s.count})`, s.name)));
-  if ([...subSel.options].some((o) => o.value === prev)) subSel.value = prev;
 }
 
 /** Rename the selected category or sub-category, folder on disk included. */
@@ -1498,9 +1615,9 @@ function applyCategoryFilter(category, subcategory = '') {
   state.filters.collection = '';
   state.filters.category = category || '';
   state.filters.subcategory = subcategory || '';
-  $('filter-category').value = state.filters.category;
+  state.filters.uncategorised = state.filters.category === UNCATEGORISED;
   paintSubcategories();
-  if (subcategory) $('filter-subcategory').value = subcategory;
+  if (topPick.subcategory) topPick.subcategory.value = subcategory || '';
   resetResults();
 }
 
@@ -1515,14 +1632,6 @@ function applyCreatorFilter(creator) {
   state.filters.q = '';
   state.filters.creator = creator || '';
   resetResults();
-}
-
-function fillSelect(select, options, emptyLabel) {
-  const previous = select.value;
-  select.replaceChildren();
-  select.append(new Option(emptyLabel, ''));
-  options.forEach((opt) => select.append(new Option(opt.label, opt.value)));
-  if ([...select.options].some((o) => o.value === previous)) select.value = previous;
 }
 
 /* --------------------------------------------------------------- manage */
@@ -1893,6 +2002,117 @@ function applyTheme(theme) {
   const button = $('theme-toggle');
   button.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
   button.querySelector('use').setAttribute('href', theme === 'dark' ? '#i-moon' : '#i-sun');
+  // Hover direction and label contrast both depend on the theme, so a chosen
+  // accent has to be recomputed rather than carried across unchanged.
+  const accent = localStorage.getItem('atlas-accent');
+  if (accent) applyAccent(accent);
+}
+
+/* ---------------------------------------------------------------- accent */
+
+/* A dozen starting points, then a colour well for anything else. Kept to hues
+   that stay legible as a button fill in both themes — nothing so dark it
+   swallows its own label, nothing so pale it vanishes on white. */
+const ACCENT_PRESETS = [
+  ['Indigo', '#7c8cff'], ['Violet', '#a78bfa'], ['Fuchsia', '#e879f9'],
+  ['Rose', '#fb7185'], ['Red', '#f87171'], ['Amber', '#fbbf24'],
+  ['Lime', '#a3e635'], ['Emerald', '#34d399'], ['Teal', '#2dd4bf'],
+  ['Sky', '#38bdf8'], ['Blue', '#60a5fa'], ['Slate', '#94a3b8'],
+];
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** WCAG relative luminance, used only to decide black-or-white label text. */
+function luminance([r, g, b]) {
+  const f = (c) => {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+const shift = (rgb, amount) => rgb.map(
+  (c) => Math.round(amount > 0 ? c + (255 - c) * amount : c * (1 + amount)));
+
+/** Re-derive every accent token from one colour.
+ *
+ *  Only the four --accent* tokens (plus the transparent surface's own) are
+ *  touched: 31 rules already read them, so the button fills, focus rings,
+ *  chips, pressed states and progress bar all follow without any rule knowing
+ *  a colour was chosen. Passing null restores the stylesheet's own values.
+ */
+function applyAccent(hex) {
+  const root = document.documentElement;
+  const keys = ['--accent', '--accent-hover', '--accent-soft', '--accent-text', '--glass-accent'];
+  if (!hex) {
+    keys.forEach((k) => root.style.removeProperty(k));
+    localStorage.removeItem('atlas-accent');
+    paintAccentSwatch(null);
+    return;
+  }
+  const rgb = hexToRgb(hex);
+  if (!rgb) return;
+  const light = root.dataset.theme === 'light';
+  // Hover moves away from the page: brighter on dark, deeper on light.
+  const hover = shift(rgb, light ? -0.22 : 0.22);
+  root.style.setProperty('--accent', `rgb(${rgb.join(',')})`);
+  root.style.setProperty('--accent-hover', `rgb(${hover.join(',')})`);
+  root.style.setProperty('--accent-soft', `rgba(${rgb.join(',')}, ${light ? 0.13 : 0.16})`);
+  // Label colour is measured, not guessed — amber and slate need opposite text.
+  root.style.setProperty('--accent-text', luminance(rgb) > 0.45 ? '#0b0c0e' : '#ffffff');
+  root.style.setProperty('--glass-accent', `rgba(${rgb.join(',')}, 0.80)`);
+  localStorage.setItem('atlas-accent', hex);
+  paintAccentSwatch(hex);
+}
+
+function paintAccentSwatch(hex) {
+  const dot = document.querySelector('#accent-toggle .accent-dot');
+  if (dot) dot.style.background = hex || 'var(--accent)';
+}
+
+function accentMenu() {
+  const wrap = $('accent-menu');
+  if (!wrap) return;
+  if (!wrap.hidden) { wrap.hidden = true; return; }
+  wrap.replaceChildren();
+
+  const grid = el('div', 'accent-grid');
+  ACCENT_PRESETS.forEach(([name, hex]) => {
+    const swatch = el('button', 'accent-swatch');
+    swatch.type = 'button';
+    swatch.title = name;
+    swatch.setAttribute('aria-label', name);
+    swatch.style.background = hex;
+    swatch.onclick = () => { applyAccent(hex); wrap.hidden = true; };
+    grid.append(swatch);
+  });
+  wrap.append(grid);
+
+  const row = el('div', 'accent-row');
+  const custom = el('input');
+  custom.type = 'color';
+  custom.value = localStorage.getItem('atlas-accent') || '#7c8cff';
+  custom.title = 'Pick any colour';
+  custom.oninput = () => applyAccent(custom.value);
+  const reset = el('button', 'btn tiny ghost', 'Reset');
+  reset.type = 'button';
+  reset.onclick = () => { applyAccent(null); wrap.hidden = true; };
+  row.append(custom, reset);
+  wrap.append(row);
+
+  wrap.hidden = false;
+  const away = (event) => {
+    if (!wrap.contains(event.target) && event.target.closest('#accent-toggle') === null) {
+      wrap.hidden = true;
+      document.removeEventListener('mousedown', away, true);
+    }
+  };
+  document.addEventListener('mousedown', away, true);
 }
 
 /** Dark/light and solid/glass are independent axes.
@@ -1960,8 +2180,6 @@ function bindFilters() {
     });
   };
   // Sort now lives in the top bar.
-  bind('topbar-sort-select', 'sort');
-  bind('filter-base', 'base_model');
   bind('filter-fav', 'favorite');
   bind('filter-rated', 'rated');
   bind('filter-notes', 'has_notes');
@@ -1972,26 +2190,13 @@ function bindFilters() {
 
   // Category cascade: choosing a category resets the sub-category and reveals
   // its options; choosing a sub-category narrows further.
-  $('filter-category').addEventListener('change', (event) => {
-    const option = event.target.selectedOptions[0];
-    state.filters.uncategorised = option?.dataset.uncategorised === '1';
-    state.filters.category = state.filters.uncategorised ? UNCATEGORISED : event.target.value;
-    state.filters.subcategory = '';
-    state.filters.collection = '';
-    paintSubcategories();
-    resetResults();
-  });
-  $('filter-subcategory').addEventListener('change', (event) => {
-    state.filters.subcategory = event.target.value;
-    resetResults();
-  });
-
   $('clear-filters').onclick = () => {
     state.filters = { ...EMPTY_FILTERS, sort: state.filters.sort };
     $('search').value = '';
     syncSearchHint();
-    $('filter-base').value = '';
-    $('filter-category').value = '';
+    if (topPick.base) topPick.base.value = '';
+    if (topPick.category) topPick.category.value = '';
+    if (topPick.subcategory) topPick.subcategory.value = '';
     paintSubcategories();
     ['filter-fav', 'filter-rated', 'filter-notes', 'filter-triggers',
      'filter-nometa', 'filter-nopreview', 'filter-sfw']
@@ -2005,6 +2210,7 @@ function bindChrome() {
   $('nav-manage').onclick = () => showView('manage');
   $('theme-toggle').onclick = () =>
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  $('accent-toggle').onclick = accentMenu;
   $('surface-toggle').onclick = () =>
     applySurface(document.documentElement.dataset.surface === 'glass' ? 'solid' : 'glass');
 
@@ -2132,6 +2338,7 @@ async function init() {
   // Solid unless asked otherwise: the lighter surface is the one a large
   // library should get by default.
   applySurface(localStorage.getItem('atlas-surface') || 'solid');
+  applyAccent(localStorage.getItem('atlas-accent'));
 
   // The launch URL carries the session token; the server has now set it as a
   // cookie, so drop it from the address bar before it gets copied anywhere.
@@ -2154,11 +2361,10 @@ async function init() {
       oldest: 'Oldest first', size: 'Largest first', rating: 'Highest rated',
       used: 'Most used', base: 'Base model',
     };
-    fillSelect($('topbar-sort-select'),
-      boot.sorts.map((s) => ({ value: s, label: SORT_LABELS[s] || s })), 'Name (A–Z)');
-    // The empty-label option maps to '' which the server treats as default name.
-    $('topbar-sort-select').options[0].value = 'name';
-    $('topbar-sort-select').value = state.filters.sort;
+    state.sorts = boot.sorts.map((k) => ({ value: k, label: SORT_LABELS[k] || k }));
+    buildTopbarPickers();
+    const chosen = state.sorts.find((o) => o.value === state.filters.sort);
+    if (chosen) topPick.sort.value = chosen.label;
 
     renderStats(boot.stats);
     balanceTopbar();      // brand-count just got its first real text — settle once
@@ -2167,8 +2373,7 @@ async function init() {
     renderProviders(boot.providers);
     renderSettings(boot.settings);
     renderHistory(boot.history || []);
-    fillSelect($('filter-base'), boot.facets.base_models.map(
-      (b) => ({ value: b.value, label: `${b.value} (${b.count})` })), 'All');
+    state.baseModels = (boot.facets && boot.facets.base_models) || [];
     applyCategories(boot.facets.categories || [], boot.facets.uncategorised ?? 0);
 
     applyJobState({ jobs: boot.jobs });

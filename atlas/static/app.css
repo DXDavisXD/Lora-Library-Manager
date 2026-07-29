@@ -292,7 +292,7 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
   display: flex; align-items: center; gap: 10px;
   flex: 1 1 auto; min-width: 0; justify-content: center;
 }
-.brand-logo { border-radius: 5px; display: block; flex: 0 0 auto; }
+.brand-logo { border-radius: 6px; display: block; flex: 0 0 auto; }
 .search-wrap { position: relative; flex: 0 1 400px; min-width: 140px; }
 /* Clear the "/" badge sitting inside the field, or the placeholder and your
    typed text run underneath it. */
@@ -921,6 +921,20 @@ body.modal-open { overflow: hidden; }
 /* Category and sub-category share a row. min-width:0 on both so a long name
    ellipsises inside its own half instead of shoving the other one narrow. */
 .dm-picker-row { display: flex; gap: 10px; }
+/* Top-bar variant: the same control at the size the old selects were, and
+   pinned to a fixed width for the same reason they were — an auto-width control
+   resizes to whatever option is chosen and slides the search box sideways every
+   time you change a filter. */
+.tb-pick { flex: 0 1 150px; width: 150px; min-width: 96px; }
+#filter-base.tb-pick { flex-basis: 168px; width: 168px; }
+.picker-compact .picker-button {
+  padding: 6px 26px 6px 10px; font-size: 12.5px;
+  border-radius: var(--radius-pill);
+}
+.picker-compact .picker-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker.is-disabled { opacity: .45; }
+.picker.is-disabled .picker-button { cursor: not-allowed; }
+
 .dm-picker-row .dm-field { flex: 1 1 0; }
 
 /* ---------- searchable picker ---------- */
@@ -942,6 +956,17 @@ body.modal-open { overflow: hidden; }
   background: var(--panel-head); border: 1px solid var(--border-strong);
   border-radius: var(--radius-s); box-shadow: var(--shadow);
   overflow: hidden;
+}
+/* The whole reason the native selects had to go: an OS-drawn popup cannot be
+   blurred or themed, and over artwork it renders as an opaque grey slab. This
+   one is ours, so on the transparent surface it can be glass like everything
+   else — and on solid it stays a plain opaque panel, which is cheaper. */
+:root[data-surface="glass"] .picker-panel {
+  background: var(--glass-tint-2);
+  border-color: var(--glass-edge);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
 }
 .picker-search { padding: 7px; border-bottom: 1px solid var(--border); }
 .picker-search input { width: 100%; font-size: 12.5px; padding: 5px 8px; }
@@ -1404,4 +1429,68 @@ body.modal-open { overflow: hidden; }
     background-color: var(--panel);
   }
   :root[data-surface="glass"] body { background: var(--bg); }
+}
+
+/* ---------- full-size preview, in page ---------- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, .82);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  cursor: zoom-out;
+  animation: lightbox-in .14s ease;
+}
+@keyframes lightbox-in { from { opacity: 0; } }
+.lightbox img {
+  max-width: 100%; max-height: 100%;
+  border-radius: var(--radius-s);
+  box-shadow: 0 24px 70px -20px rgba(0, 0, 0, .9);
+  cursor: default;
+}
+.lightbox-close {
+  position: absolute; top: 18px; right: 20px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(0, 0, 0, .55); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .22);
+  font-size: 15px; line-height: 1; cursor: pointer;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.lightbox-close:hover { background: rgba(0, 0, 0, .8); }
+
+/* ---------- accent picker ---------- */
+.accent-dot {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid rgba(255, 255, 255, .35);
+  display: block;
+}
+.topbar-actions { position: relative; }
+.accent-menu {
+  position: absolute; z-index: 40; top: calc(100% + 6px); right: 0;
+  padding: 10px;
+  background: var(--panel-head); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s); box-shadow: var(--shadow);
+}
+:root[data-surface="glass"] .accent-menu {
+  background: var(--glass-tint-2); border-color: var(--glass-edge);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+}
+.accent-grid {
+  display: grid; grid-template-columns: repeat(6, 22px); gap: 7px;
+}
+.accent-swatch {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .28); padding: 0; cursor: pointer;
+  transition: transform var(--speed);
+}
+.accent-swatch:hover { transform: scale(1.16); }
+.accent-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+}
+.accent-row input[type="color"] {
+  width: 34px; height: 26px; padding: 0; border-radius: 6px;
+  border: 1px solid var(--border-strong); background: none; cursor: pointer;
 }

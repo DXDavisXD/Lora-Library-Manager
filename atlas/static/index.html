@@ -17,7 +17,7 @@
   </button>
 
   <div class="brand">
-    <img class="brand-logo" src="/static/logo.png" alt="" width="22" height="22">
+    <img class="brand-logo" src="/static/logo.png" alt="" width="26" height="26">
     <span class="brand-text">
       <span class="brand-name">LoRA&nbsp;Library&nbsp;Manager</span>
       <span class="brand-count" id="brand-count"></span>
@@ -28,16 +28,13 @@
        Category comes first because it narrows what you are searching. -->
   <div class="topbar-centre">
     <div class="topbar-filters topbar-filters-lead">
-      <label class="visually-hidden" for="filter-category">Category</label>
-      <select id="filter-category" class="tb-select" title="Category">
-        <option value="">All categories</option>
-      </select>
-      <!-- Always on show, disabled until a category is picked, so the bar
-           never changes width under your cursor. -->
-      <label class="visually-hidden" for="filter-subcategory">Sub-category</label>
-      <select id="filter-subcategory" class="tb-select" title="Sub-category" disabled>
-        <option value="">All</option>
-      </select>
+      <!-- These four were native selects. A native dropdown is drawn by the OS,
+           not the page, so it cannot be blurred, themed or searched — over a
+           gallery it renders as an opaque grey list. They mount the same picker
+           the detail panel uses. Always on show, greyed until a category is
+           picked, so the bar never changes width under your cursor. -->
+      <div id="filter-category" class="tb-pick"></div>
+      <div id="filter-subcategory" class="tb-pick"></div>
       <!-- Greyed rather than hidden, for the same reason as the select above:
            the bar must not shift sideways when you pick a category. -->
       <button type="button" class="btn icon" id="rename-category" disabled
@@ -61,12 +58,8 @@
     </div>
 
     <div class="topbar-filters topbar-filters-trail">
-      <label class="visually-hidden" for="filter-base">Base model</label>
-      <select id="filter-base" class="tb-select" title="Base model">
-        <option value="">All base models</option>
-      </select>
-      <label class="visually-hidden" for="topbar-sort-select">Sort by</label>
-      <select id="topbar-sort-select" class="tb-select" title="Sort"></select>
+      <div id="filter-base" class="tb-pick"></div>
+      <div id="topbar-sort-select" class="tb-pick"></div>
     </div>
   </div>
 
@@ -86,6 +79,13 @@
             title="Solid surfaces — the lightest option. Click for transparent.">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-glass"></use></svg>
     </button>
+    <!-- Accent colour. Re-derives the --accent* tokens, which 31 rules already
+         read, so buttons, chips, focus rings and the progress bar all follow. -->
+    <button type="button" class="btn icon" id="accent-toggle"
+            aria-label="Accent colour" title="Accent colour">
+      <span class="accent-dot"></span>
+    </button>
+    <div class="accent-menu" id="accent-menu" hidden></div>
     <button type="button" class="btn icon" id="theme-toggle"
             aria-label="Switch to light theme" title="Toggle theme">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-moon"></use></svg>
