@@ -29,31 +29,8 @@
   --shadow:        0 18px 48px -22px rgba(0, 0, 0, 0.9);
   --overlay:       rgba(0, 0, 0, 0.62);
 
-  /* Liquid Glass. Surfaces are a translucent tint over a blurred, saturated
-     backdrop, edged with a bright inner line along the top where light would
-     catch. `--glass-tint-2` is for panels that sit on top of other glass and
-     need to read as a separate layer. */
-  --glass-tint:     rgba(255, 255, 255, 0.075);
-  --glass-tint-2:   rgba(255, 255, 255, 0.10);
-  --glass-edge:     rgba(255, 255, 255, 0.15);
-  --glass-specular: rgba(255, 255, 255, 0.22);
-  /* Form fields darken instead of lightening. A white veil this faint is
-     transparent enough to read whatever sits behind the panel straight
-     through the field; a scrim keeps them legible as inset surfaces. */
-  --glass-control:  rgba(6, 7, 9, 0.42);
-  /* Buttons lighten rather than darken — they are raised surfaces, not inset
-     ones — and carry a much smaller blur than a panel, since they are only
-     ever a few millimetres of glass sitting on top of something else. */
-  --glass-btn:       rgba(255, 255, 255, 0.10);
-  --glass-btn-hover: rgba(255, 255, 255, 0.17);
-  --glass-accent:    rgba(124, 140, 255, 0.80);
-  --glass-btn-blur:  12px;
-  --glass-blur:     28px;
-  --glass-sat:      150%;
-  --glass-shadow:   0 10px 34px -12px rgba(0, 0, 0, 0.7);
-
-  --radius:   18px;
-  --radius-s: 12px;
+  --radius:   12px;
+  --radius-s: 8px;
   --radius-pill: 999px;
   --gap:      14px;
   --speed:    .18s;
@@ -87,18 +64,63 @@
   --shadow:        0 18px 40px -24px rgba(15, 23, 42, 0.35);
   --overlay:       rgba(15, 23, 42, 0.42);
 
-  /* Light glass is the inverse: a white scrim rather than a white veil, with a
-     near-opaque specular edge. Tints are much stronger than in dark mode
-     because dark text needs a bright, settled surface to stay readable. */
-  --glass-tint:     rgba(255, 255, 255, 0.62);
-  --glass-tint-2:   rgba(255, 255, 255, 0.78);
-  --glass-edge:     rgba(255, 255, 255, 0.85);
-  --glass-specular: rgba(255, 255, 255, 0.95);
-  --glass-control:  rgba(255, 255, 255, 0.78);
-  --glass-btn:       rgba(255, 255, 255, 0.58);
-  --glass-btn-hover: rgba(255, 255, 255, 0.85);
-  --glass-accent:    rgba(79, 91, 213, 0.86);
-  --glass-shadow:   0 10px 30px -14px rgba(15, 23, 42, 0.28);
+}
+
+/* ---------- surface: glass -------------------------------------------------
+   A second, independent axis. `data-theme` decides dark or light; this decides
+   whether surfaces are painted or translucent. Everything below — and the whole
+   Liquid Glass block at the end of this file — hangs off it, so with the default
+   `solid` surface not one backdrop-filter rule matches and the browser has
+   nothing extra to composite. That is what keeps the default cheap at 5000+
+   models while the glass look stays available to anyone who wants it. */
+:root[data-surface="glass"] {
+  /* Surfaces are a translucent tint over a blurred, saturated backdrop, edged
+     with a bright inner line along the top where light would catch.
+     `--glass-tint-2` is for panels sitting on other glass that need to read as
+     a separate layer. */
+  --glass-tint:     rgba(255, 255, 255, 0.055);
+  --glass-tint-2:   rgba(255, 255, 255, 0.085);
+  --glass-edge:     rgba(255, 255, 255, 0.13);
+  --glass-specular: rgba(255, 255, 255, 0.34);
+  /* Form fields darken instead of lightening. A white veil this faint is
+     transparent enough to read whatever sits behind the panel straight
+     through the field; a scrim keeps them legible as inset surfaces. */
+  --glass-control:  rgba(6, 7, 9, 0.42);
+  /* Buttons lighten rather than darken — raised surfaces, not inset ones — and
+     carry a much smaller blur than a panel, being only a few millimetres of
+     glass sitting on top of something else. */
+  --glass-btn:       rgba(255, 255, 255, 0.09);
+  --glass-btn-hover: rgba(255, 255, 255, 0.16);
+  --glass-btn-edge:  rgba(255, 255, 255, 0.10);
+  --glass-accent:    rgba(124, 140, 255, 0.78);
+  --glass-btn-blur:  10px;
+  /* Less blur and more transparency than a frosted panel: the point is to see
+     what is behind, shifted and brightened, not to hide it. Saturation does
+     the lifting instead. */
+  --glass-blur:     18px;
+  --glass-sat:      185%;
+  --glass-shadow:   0 10px 34px -12px rgba(0, 0, 0, 0.7);
+
+  --radius:   18px;
+  --radius-s: 12px;
+}
+
+:root[data-theme="light"][data-surface="glass"] {
+  /* Light glass is the inverse: a white scrim rather than a white veil.
+     Tints run much stronger than in dark mode because dark text needs a
+     bright, settled surface to stay readable. The edge is a *darker* line
+     here — on a pale bar a white border is invisible, which is what made
+     controls and the bar they sit on impossible to tell apart. */
+  --glass-tint:     rgba(255, 255, 255, 0.55);
+  --glass-tint-2:   rgba(255, 255, 255, 0.72);
+  --glass-edge:     rgba(15, 23, 42, 0.14);
+  --glass-specular: rgba(255, 255, 255, 0.90);
+  --glass-control:  rgba(255, 255, 255, 0.82);
+  --glass-btn:       rgba(255, 255, 255, 0.72);
+  --glass-btn-hover: rgba(255, 255, 255, 0.95);
+  --glass-btn-edge:  rgba(15, 23, 42, 0.16);
+  --glass-accent:    rgba(79, 91, 213, 0.88);
+  --glass-shadow:   0 10px 30px -14px rgba(15, 23, 42, 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -132,13 +154,13 @@ body {
    of its own, the body's propagates to the canvas and paints over anything the
    body draws behind its content — which silently swallowed this gradient. */
 html { background: var(--bg); }
-body {
+:root[data-surface="glass"] body {
   background:
     radial-gradient(1100px 760px at 12% -12%, rgba(124, 140, 255, 0.22), transparent 62%),
     radial-gradient(880px 680px at 88% -4%,  rgba(52, 211, 153, 0.12), transparent 58%),
     radial-gradient(980px 860px at 52% 112%, rgba(168, 85, 247, 0.16), transparent 60%);
 }
-:root[data-theme="light"] body {
+:root[data-theme="light"][data-surface="glass"] body {
   background:
     radial-gradient(1100px 760px at 12% -12%, rgba(79, 91, 213, 0.18), transparent 62%),
     radial-gradient(880px 680px at 88% -4%,  rgba(4, 120, 87, 0.10), transparent 58%),
@@ -1010,21 +1032,30 @@ body.modal-open { overflow: hidden; }
 }
 
 /* ===================================================================
-   Liquid Glass
+   Liquid Glass — an opt-in surface, not the default
    -------------------------------------------------------------------
-   Everything below re-skins existing components; no component knows it
-   is glass. Two rules keep it cheap:
+   Every rule here is scoped to [data-surface="glass"]. On the default
+   `solid` surface not one of them matches, so the browser has no extra
+   layers to composite and no backdrop to re-blur: the lightweight look
+   costs exactly what it did before any of this existed.
 
-   1. `backdrop-filter` only goes on chrome — the top bar, sidebar,
-      status strip, result bar, panels and modal. Those are a fixed,
-      small set that never recycles.
-   2. Cards get the *look* (concentric radii, specular edge, depth)
-      but stay opaque. There are 45 of them live at any moment and they
-      are created and destroyed continuously while scrolling; blurring
-      each one would re-composite the backdrop 45 times a frame.
+   Within glass, two rules keep it affordable:
+
+   1. `backdrop-filter` goes on chrome — top bar, status strip, sidebar,
+      panels, modal — plus buttons. A fixed, small set that never
+      recycles.
+   2. Cards get the *language* (concentric radii, specular edge, depth)
+      but stay opaque. 45 are live at any moment and they are created and
+      destroyed continuously while scrolling; blurring each would
+      re-composite the backdrop 45 times a frame.
    =================================================================== */
 
-.glass, .topbar, .status-strip, .sidebar, .panel, .detail-modal {
+:root[data-surface="glass"] .glass,
+:root[data-surface="glass"] .topbar,
+:root[data-surface="glass"] .status-strip,
+:root[data-surface="glass"] .sidebar,
+:root[data-surface="glass"] .panel,
+:root[data-surface="glass"] .detail-modal {
   background: var(--glass-tint);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
@@ -1032,7 +1063,10 @@ body.modal-open { overflow: hidden; }
 }
 
 /* The specular line: light catching the top edge of a raised pane. */
-.topbar, .sidebar, .panel, .detail-modal {
+:root[data-surface="glass"] .topbar,
+:root[data-surface="glass"] .sidebar,
+:root[data-surface="glass"] .panel,
+:root[data-surface="glass"] .detail-modal {
   box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
 }
 
@@ -1040,35 +1074,39 @@ body.modal-open { overflow: hidden; }
    This is what separates glass from "a bar with blur on it": there has
    to be something moving behind it. The bar wraps to two and three rows
    as the window narrows, so the offsets are measured at runtime rather
-   than hard-coded (see setChromeMetrics in app.js). */
-.topbar {
+   than hard-coded (see setChromeMetrics in app.js). Solid keeps the
+   ordinary flow layout, where none of this is needed. */
+:root[data-surface="glass"] .topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 30;
   border-bottom: 1px solid var(--glass-edge);
 }
-.status-strip {
+:root[data-surface="glass"] .status-strip {
   position: absolute; top: var(--topbar-h, 58px); left: 0; right: 0; z-index: 29;
   border-bottom: 1px solid var(--glass-edge);
 }
-.layout { position: relative; }
-.content { position: relative; }
-.sidebar { padding-top: var(--chrome-h, 92px); border-right: 1px solid var(--glass-edge); }
-.scroller {
+:root[data-surface="glass"] .layout,
+:root[data-surface="glass"] .content { position: relative; }
+:root[data-surface="glass"] .sidebar {
+  padding-top: var(--chrome-h, 92px);
+  border-right: 1px solid var(--glass-edge);
+}
+:root[data-surface="glass"] .scroller,
+:root[data-surface="glass"] .manage-scroll {
   padding-top: calc(var(--chrome-h, 92px) + 18px);
 }
-.manage-scroll { padding-top: calc(var(--chrome-h, 92px) + 18px); }
 
 /* ---- cards: the language, without the blur ------------------------ */
-.card {
+:root[data-surface="glass"] .card {
   background: var(--panel);
   border-color: var(--glass-edge);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07),
               0 6px 20px -10px rgba(0, 0, 0, 0.6);
 }
-:root[data-theme="light"] .card {
+:root[data-theme="light"][data-surface="glass"] .card {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9),
               0 6px 18px -12px rgba(15, 23, 42, 0.35);
 }
-.card:hover {
+:root[data-surface="glass"] .card:hover {
   transform: translateY(-3px);
   border-color: var(--accent);
   box-shadow: inset 0 1px 0 var(--glass-specular),
@@ -1076,7 +1114,9 @@ body.modal-open { overflow: hidden; }
 }
 /* Concentric: the thumbnail's corners sit inside the card's, so its radius
    is the card's minus the border, not the same number. */
-.card-thumb { border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; }
+:root[data-surface="glass"] .card-thumb {
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+}
 
 /* ---- controls become pills --------------------------------------- */
 /* Buttons carry their own small blur rather than only a tint. Most sit on a
@@ -1084,43 +1124,67 @@ body.modal-open { overflow: hidden; }
    actions over the ambient wash, the modal's footer row — and a button that
    is glass in one place and flat in another reads as a bug. The blur is a
    fraction of a panel's, and none of these are in the gallery's scroll path:
-   the card favourite star is not a .btn. */
-.btn {
+   the card favourite star is not a .btn.
+
+   The border is its own token, deliberately fainter than a panel's edge. At
+   panel strength a ring that reads as a crisp seam around a large pane turns
+   into a hard outline around something button-sized, which is what made these
+   look drawn-on rather than moulded. */
+:root[data-surface="glass"] .btn {
   border-radius: var(--radius-pill);
   background: var(--glass-btn);
-  border-color: var(--glass-edge);
+  border-color: var(--glass-btn-edge);
   -webkit-backdrop-filter: blur(var(--glass-btn-blur)) saturate(var(--glass-sat));
   backdrop-filter: blur(var(--glass-btn-blur)) saturate(var(--glass-sat));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
-.btn:hover { background: var(--glass-btn-hover); border-color: var(--glass-edge); }
-.btn.icon { border-radius: 50%; }
-/* Ghost stays see-through, but keeps the edge so it still reads as a control. */
-.btn.ghost { background: transparent; box-shadow: none; }
-.btn.ghost:hover { background: var(--glass-btn); }
+:root[data-surface="glass"] .btn:hover {
+  background: var(--glass-btn-hover);
+  border-color: var(--glass-btn-edge);
+}
+:root[data-surface="glass"] .btn.icon { border-radius: 50%; }
+/* Ghost stays see-through and loses the ring entirely — it is meant to read as
+   a label you can press, not as a control with a box around it. */
+:root[data-surface="glass"] .btn.ghost {
+  background: transparent; box-shadow: none; border-color: transparent;
+}
+:root[data-surface="glass"] .btn.ghost:hover {
+  background: var(--glass-btn); border-color: var(--glass-btn-edge);
+}
 /* Accent buttons stay unmistakably accent, just no longer flat paint. */
-.btn.primary, .btn[aria-pressed="true"] {
+:root[data-surface="glass"] .btn.primary,
+:root[data-surface="glass"] .btn[aria-pressed="true"] {
   background: var(--glass-accent);
   border-color: transparent;
   box-shadow: inset 0 1px 0 var(--glass-specular);
 }
-.btn.primary:hover, .btn[aria-pressed="true"]:hover { background: var(--accent); }
-.btn[disabled] { -webkit-backdrop-filter: none; backdrop-filter: none; }
-.tb-select, input[type="search"], input[type="text"], input[type="number"], select {
+:root[data-surface="glass"] .btn.primary:hover,
+:root[data-surface="glass"] .btn[aria-pressed="true"]:hover { background: var(--accent); }
+:root[data-surface="glass"] .btn[disabled] {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+:root[data-surface="glass"] .tb-select,
+:root[data-surface="glass"] input[type="search"],
+:root[data-surface="glass"] input[type="text"],
+:root[data-surface="glass"] input[type="number"],
+:root[data-surface="glass"] select {
   border-radius: var(--radius-pill);
   background-color: var(--glass-control);
   border-color: var(--glass-edge);
 }
-textarea { border-radius: var(--radius-s); background-color: var(--glass-control); }
+:root[data-surface="glass"] textarea {
+  border-radius: var(--radius-s); background-color: var(--glass-control);
+}
 /* Chips keep their squircle. A pill radius turns a one-line tag into a lozenge
    and a multi-line trigger group into an oval, which is the shape this was
    explicitly moved away from — so the pill treatment stops at controls. */
 
 /* ---- panels stack a second layer of glass ------------------------- */
-.panel { background: var(--glass-tint-2); }
+:root[data-surface="glass"] .panel { background: var(--glass-tint-2); }
+
 /* ---- the panel takes its colour from the preview -------------------
    tintDetailFromImage() in app.js samples the visible preview and writes a hue
-   and a saturation here; these are the only two rules that read them. The
+   and a saturation here; these rules are the only things that read them. The
    defaults are neutral, so a greyscale preview — or one with too little colour
    to call a winner — leaves the panel exactly as it was.
 
@@ -1133,43 +1197,85 @@ textarea { border-radius: var(--radius-s); background-color: var(--glass-control
    each rule gets its own: with no hue the wash resolves to 0% saturation and
    disappears, while the section labels resolve to the accent they always were.
    A declared default would have forced both to the same number. */
-.detail-modal {
+:root[data-surface="glass"] .detail-modal {
   background:
     linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .13) 0 0),
     var(--glass-tint-2);
   border-color: hsl(var(--dm-h, 0) var(--dm-s, 0%) 72% / .24);
   transition: border-color var(--speed) ease;
 }
-.dm-middle {
+:root[data-surface="glass"] .dm-middle {
   background:
     linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .07) 0 0),
     var(--glass-tint);
 }
-.dm-section-title { color: hsl(var(--dm-h, 232) var(--dm-s, 82%) 76%); }
-:root[data-theme="light"] .detail-modal {
+/* The left column reads as the heaviest slab in the panel because it is the
+   only one with no wash of its own. A faint one, plus a masked fade where its
+   scrolling body meets the pinned footer, settles it into the sheet — the same
+   treatment the tag overflow uses, for the same reason: painting a solid
+   gradient over glass only works if the surface behind really is that colour. */
+:root[data-surface="glass"] .dm-left {
+  background: linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .05) 0 0);
+}
+:root[data-surface="glass"] .dm-left-body {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+}
+:root[data-surface="glass"] .dm-section-title {
+  color: hsl(var(--dm-h, 232) var(--dm-s, 82%) 76%);
+}
+:root[data-theme="light"][data-surface="glass"] .detail-modal {
   background:
     linear-gradient(hsl(var(--dm-h, 240) var(--dm-s, 0%) 55% / .10) 0 0),
     var(--glass-tint-2);
 }
-:root[data-theme="light"] .dm-section-title {
+:root[data-theme="light"][data-surface="glass"] .dm-section-title {
   color: hsl(var(--dm-h, 232) var(--dm-s, 62%) 38%);
 }
-.modal-backdrop { backdrop-filter: blur(6px); }
+:root[data-surface="glass"] .modal-backdrop { backdrop-filter: blur(6px); }
 /* The pinned footer and the middle column were opaque panels, which read as
    solid slabs dropped onto a translucent sheet. They sit on the modal's own
    glass, so they only need a tint to separate from it. */
-.dm-actions { background: var(--glass-tint); border-top-color: var(--glass-edge); }
+:root[data-surface="glass"] .dm-actions {
+  background: var(--glass-tint); border-top-color: var(--glass-edge);
+}
+
+/* In light mode a white control on a white bar disappears. The bar gets a
+   faint floor and the things sitting on it get a real edge, so the two stop
+   dissolving into each other. */
+:root[data-theme="light"][data-surface="glass"] .topbar,
+:root[data-theme="light"][data-surface="glass"] .status-strip {
+  border-bottom-color: rgba(15, 23, 42, 0.12);
+}
+:root[data-theme="light"][data-surface="glass"] .tb-select,
+:root[data-theme="light"][data-surface="glass"] input[type="search"],
+:root[data-theme="light"][data-surface="glass"] .btn {
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75),
+              0 1px 2px -1px rgba(15, 23, 42, 0.18);
+}
 
 /* Reduced transparency: a real accessibility setting on iOS, and the same
    people who turn it on there want it here. Drops every blur and falls back
-   to solid panels. */
+   to solid panels — which is simply the default surface. */
 @media (prefers-reduced-transparency: reduce) {
-  .glass, .topbar, .status-strip, .sidebar, .panel, .detail-modal,
-  .tb-select, input[type="search"], input[type="text"], input[type="number"],
-  select, textarea, .modal-backdrop {
+  :root[data-surface="glass"] .glass,
+  :root[data-surface="glass"] .topbar,
+  :root[data-surface="glass"] .status-strip,
+  :root[data-surface="glass"] .sidebar,
+  :root[data-surface="glass"] .panel,
+  :root[data-surface="glass"] .detail-modal,
+  :root[data-surface="glass"] .tb-select,
+  :root[data-surface="glass"] input[type="search"],
+  :root[data-surface="glass"] input[type="text"],
+  :root[data-surface="glass"] input[type="number"],
+  :root[data-surface="glass"] select,
+  :root[data-surface="glass"] textarea,
+  :root[data-surface="glass"] .btn,
+  :root[data-surface="glass"] .modal-backdrop {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     background-color: var(--panel);
   }
-  body::before { display: none; }
+  :root[data-surface="glass"] body { background: var(--bg); }
 }

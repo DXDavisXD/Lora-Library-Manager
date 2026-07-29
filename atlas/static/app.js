@@ -1748,6 +1748,32 @@ function applyTheme(theme) {
   button.querySelector('use').setAttribute('href', theme === 'dark' ? '#i-moon' : '#i-sun');
 }
 
+/** Dark/light and solid/glass are independent axes.
+ *
+ *  `solid` is the default and is not a stripped-down glass: every rule in the
+ *  Liquid Glass block is scoped to [data-surface="glass"], so on solid none of
+ *  them match and there is no backdrop to re-blur. Glass costs GPU work that a
+ *  5000-model library may not want to spend, which is exactly why it is a
+ *  choice rather than the only option.
+ */
+function applySurface(surface) {
+  const glass = surface === 'glass';
+  document.documentElement.dataset.surface = glass ? 'glass' : 'solid';
+  localStorage.setItem('atlas-surface', glass ? 'glass' : 'solid');
+  const button = $('surface-toggle');
+  if (button) {
+    button.setAttribute('aria-pressed', String(glass));
+    button.title = glass
+      ? 'Liquid Glass — translucent surfaces. Click for the lighter flat look.'
+      : 'Flat surfaces — the lightest option. Click for Liquid Glass.';
+    button.setAttribute('aria-label', glass ? 'Switch to flat surfaces' : 'Switch to glass surfaces');
+  }
+  // The glass layout overlays the chrome, so the scroller's top inset only
+  // applies on that surface — remeasure whenever it changes.
+  setChromeMetrics();
+  if (state.view === 'gallery') layout();
+}
+
 /* ------------------------------------------------------------------- init */
 
 /** Keep the "/" hint out of the way once the box has something in it. */
@@ -1830,6 +1856,8 @@ function bindChrome() {
   $('nav-manage').onclick = () => showView('manage');
   $('theme-toggle').onclick = () =>
     applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+  $('surface-toggle').onclick = () =>
+    applySurface(document.documentElement.dataset.surface === 'glass' ? 'solid' : 'glass');
 
   $('modal-close').onclick = closeDetail;
   $('modal-backdrop').onclick = closeDetail;
@@ -1952,6 +1980,9 @@ function observeTopbarBalance() {
 async function init() {
   applyTheme(localStorage.getItem('atlas-theme')
     || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+  // Solid unless asked otherwise: the lighter surface is the one a large
+  // library should get by default.
+  applySurface(localStorage.getItem('atlas-surface') || 'solid');
 
   // The launch URL carries the session token; the server has now set it as a
   // cookie, so drop it from the address bar before it gets copied anywhere.
