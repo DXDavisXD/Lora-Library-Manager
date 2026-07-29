@@ -391,14 +391,43 @@ class TestSidecar(unittest.TestCase):
         self.assertFalse((self.dir / "r.atlas.json").exists())
         self.assertTrue((self.dir / "r.json").exists())
 
-    def test_metadata_sidecar_seeds_activation_when_absent(self):
+    def test_metadata_sidecar_never_creates_activation_text(self):
+        """A fresh download must leave the WebUI's own field empty.
+
+        Seeding it from the official trigger list makes a provider's guess
+        indistinguishable from something the user typed, and there is then no
+        way to recover which entries they actually chose.
+        """
         model = self.dir / "n.safetensors"
         model.write_bytes(b"x")
         sidecar.write_metadata_sidecar(
             model, {"name": "N", "base_model": "SDXL", "trained_words": ["a, b", "c"]}, raw={})
         data = json.loads((self.dir / "n.json").read_text(encoding="utf-8"))
-        # No user file existed, so activation text is seeded from official triggers.
-        self.assertEqual(data["activation text"], "a, b, c")
+        self.assertNotIn("activation text", data)
+        # The official list is still recorded, just under its own key.
+        self.assertEqual(data["trained_words"], ["a, b", "c"])
+
+    def test_metadata_sidecar_keeps_activation_text_the_user_wrote(self):
+        model = self.dir / "n.safetensors"
+        model.write_bytes(b"x")
+        (self.dir / "n.json").write_text(
+            json.dumps({"activation text": "my own words", "preferred weight": 0.8}),
+            encoding="utf-8")
+        sidecar.write_metadata_sidecar(
+            model, {"name": "N", "base_model": "SDXL", "trained_words": ["official"]}, raw={})
+        data = json.loads((self.dir / "n.json").read_text(encoding="utf-8"))
+        self.assertEqual(data["activation text"], "my own words")
+        self.assertEqual(data["preferred weight"], 0.8)
+
+    def test_metadata_sidecar_creates_no_empty_user_fields(self):
+        """None of the WebUI-editable keys should appear until a person fills one."""
+        model = self.dir / "n.safetensors"
+        model.write_bytes(b"x")
+        sidecar.write_metadata_sidecar(
+            model, {"name": "N", "base_model": "SDXL", "trained_words": ["a"]}, raw={})
+        data = json.loads((self.dir / "n.json").read_text(encoding="utf-8"))
+        for key in sidecar.USER_OWNED_KEYS:
+            self.assertNotIn(key, data, f"{key} must not be created on a fresh download")
 
 
 # ---------------------------------------------------------------------------
@@ -1459,6 +1488,68 @@ class TestCollectionApi(LibraryFixture):
         row = self.conn.execute(
             "SELECT rating, notes FROM user_data WHERE file_id=?", (new_id,)).fetchone()
         self.assertEqual((row["rating"], row["notes"]), (5, "keep me"))
+
+
+class _StubHandle:
+    """Enough of JobHandle for a task body to run outside the queue."""
+
+    def __init__(self):
+        self.logs = []
+
+    def check_cancelled(self): pass
+    def set_total(self, total): pass
+    def advance(self, detail=None): pass
+    def progress(self, current=None, message=None, detail=None): pass
+    def log(self, message, level="info"): self.logs.append((level, message))
+
+
+class TestFilingLooseModels(LibraryFixture):
+    """Loose models must end up in their own folder, taking their files along."""
+
+    def _loose_model(self):
+        self.make_model("kanna.safetensors", preview=True, meta={
+            "model": {"name": "Kanna", "creator": {"username": "someone"}},
+            "baseModel": "SDXL", "id": 1, "modelId": 10})
+        self.rescan()
+        enrich.ingest_sidecars(self.conn, self.root, only_unknown=False)
+
+    def test_file_loose_models_moves_the_model_and_its_assets(self):
+        from atlas import tasks
+        self._loose_model()
+        stats = tasks.file_loose_models(_StubHandle())
+        self.assertEqual(stats["moved_to_folders"], 1)
+        self.assertEqual(stats["failed_moves"], 0)
+        # Nothing left loose at the root.
+        loose = [p.name for p in self.root.iterdir() if p.is_file()]
+        self.assertEqual(loose, [], f"still loose at root: {loose}")
+        # The model, its sidecar and its preview all travelled together.
+        moved = list(self.root.glob("*/kanna.safetensors"))
+        self.assertEqual(len(moved), 1)
+        folder = moved[0].parent
+        self.assertTrue((folder / "kanna.json").is_file(), "sidecar left behind")
+        self.assertTrue((folder / "kanna.png").is_file(), "preview left behind")
+
+    def test_update_everything_includes_the_filing_stage(self):
+        """Regression: Update Everything fetched metadata but never filed
+        anything, so freshly-onboarded models stayed loose at the root."""
+        from atlas import tasks
+        import inspect
+        source = inspect.getsource(tasks.full_sync)
+        self.assertIn("file_loose_models", source)
+        # And the stage list actually runs it.
+        self.assertIn("Filing loose models", source)
+
+    def test_filing_is_a_no_op_in_dry_run(self):
+        from atlas import tasks
+        self._loose_model()
+        config.set_many({"dry_run": True})
+        try:
+            stats = tasks.file_loose_models(_StubHandle())
+        finally:
+            config.set_many({"dry_run": False})
+        self.assertEqual(stats["moved_to_folders"], 0)
+        self.assertTrue((self.root / "kanna.safetensors").is_file(),
+                        "dry run must not move anything")
 
 
 class TestCivitaiBase(LibraryFixture):

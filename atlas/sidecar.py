@@ -661,8 +661,9 @@ def write_metadata_sidecar(model_path: Path, fields: dict[str, Any],
       user-owned keys (activation text, preferred weight, negative text, notes)
       are left exactly as they are — that is where hand-curated trigger words
       live.
-    * ``activation text`` is only *seeded* from official triggers when the file
-      is new or has none; it is never overwritten on a refresh.
+    * Those keys are never *created* either. A new sidecar gets provider data
+      and nothing else, so the WebUI's editable fields stay empty until a
+      person puts something in them.
     """
     # Fold away any legacy .atlas.json first, so a metadata refresh also tidies
     # up the second file the old design left behind.
@@ -702,10 +703,12 @@ def write_metadata_sidecar(model_path: Path, fields: dict[str, Any],
     # Restore user-owned keys untouched.
     record.update(preserved)
 
-    # Seed activation text only if the user has none yet.
-    if not record.get("activation text"):
-        triggers = fields.get("trained_words") or []
-        if triggers:
-            record["activation text"] = ", ".join(triggers)
-
+    # `activation text` is deliberately never written here, not even when the
+    # file is new. It is the WebUI's own field: whatever is in it is what gets
+    # pasted into a prompt, so it belongs to the person using the WebUI. Filling
+    # it with the official trigger list on first download looks helpful, but it
+    # silently turns a provider's guess into something indistinguishable from a
+    # hand-written prompt, and there is then no way to tell which entries the
+    # user actually chose. The official list is already stored as
+    # `trained_words`, and the UI shows it separately.
     write_atomic(path, record)

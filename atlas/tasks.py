@@ -168,6 +168,63 @@ def _rebuild_fts(conn) -> dict[str, Any]:
     return {"indexed": n}
 
 
+def file_loose_models(handle: JobHandle) -> dict[str, Any]:
+    """Give every model sitting loose at the library root its own folder.
+
+    A model is "loose" when its path has no slash in it — nothing has filed it
+    yet. Each one moves into a folder named after the model, taking its sidecar
+    and previews with it.
+
+    Callers must re-scan first. The move only carries assets the index knows
+    about, so metadata written moments earlier by a resolve or preview fetch
+    would otherwise be left behind at the old location.
+    """
+    conn, root = _ctx()
+    stats: dict[str, Any] = {"moved_to_folders": 0, "failed_moves": 0}
+    if config.get("dry_run"):
+        return stats
+
+    loose = conn.execute(
+        "SELECT f.id, f.path, f.filename, m.name, m.base_model, m.creator, "
+        "m.provider, m.provider_model_id "
+        "FROM model_file f LEFT JOIN model m ON m.file_id=f.id "
+        "WHERE f.present=1 AND instr(f.path,'/')=0"
+    ).fetchall()
+    if not loose:
+        return stats
+
+    moved = failed = 0
+    handle.set_total(len(loose))
+    for row in loose:
+        handle.check_cancelled()
+        folder = organizer.folder_name_for(row)
+        assets = organizer._assets_for(conn, root, row["id"], row["path"])
+        plan = organizer.Plan(moves=[organizer.Move(
+            file_id=row["id"], from_dir="", to_dir=folder,
+            assets=assets, reason="onboard loose file")])
+        # No handle: a single-move plan must not reset the outer progress
+        # bar. Error detail comes back in the stats instead.
+        result = organizer.apply_plan(conn, root, plan, handle=None,
+                                      remove_empty=False)
+        if result.get("errors"):
+            failed += 1
+            why = "; ".join(result.get("error_messages") or []) or "unknown error"
+            handle.log(f"could not file {row['filename']} into “{folder}”: {why}", "error")
+        else:
+            moved += result.get("moved", 0)
+            handle.log(
+                f"filed {row['filename']} -> {folder}/"
+                + (f" (+{len(assets)} asset file(s))" if assets else " (no metadata yet)"),
+                "ok")
+        handle.advance(detail=row["filename"])
+
+    stats["empty_dirs_removed"] = organizer.prune_empty_dirs(root)
+    scanner.sync(conn, root)
+    stats["moved_to_folders"] = moved
+    stats["failed_moves"] = failed
+    return stats
+
+
 def process_new(handle: JobHandle) -> dict[str, Any]:
     """Onboard loose / bare model files.
 
@@ -212,43 +269,9 @@ def process_new(handle: JobHandle) -> dict[str, Any]:
     scanner.sync(conn, root)
 
     # 3. Move loose root-level models into their own folder.
-    moved = 0
-    failed = 0
-    if not config.get("dry_run"):
-        loose = conn.execute(
-            "SELECT f.id, f.path, f.filename, m.name, m.base_model, m.creator, "
-            "m.provider, m.provider_model_id "
-            "FROM model_file f LEFT JOIN model m ON m.file_id=f.id "
-            "WHERE f.present=1 AND instr(f.path,'/')=0"
-        ).fetchall()
-        handle.set_total(len(loose))
-        for row in loose:
-            handle.check_cancelled()
-            folder = organizer.folder_name_for(row)
-            assets = organizer._assets_for(conn, root, row["id"], row["path"])
-            plan = organizer.Plan(moves=[organizer.Move(
-                file_id=row["id"], from_dir="", to_dir=folder,
-                assets=assets, reason="onboard loose file")])
-            # No handle: a single-move plan must not reset the outer progress
-            # bar. Error detail comes back in the stats instead.
-            result = organizer.apply_plan(conn, root, plan, handle=None,
-                                          remove_empty=False)
-            if result.get("errors"):
-                failed += 1
-                why = "; ".join(result.get("error_messages") or []) or "unknown error"
-                handle.log(f"could not file {row['filename']} into “{folder}”: {why}", "error")
-            else:
-                moved += result.get("moved", 0)
-                handle.log(
-                    f"filed {row['filename']} -> {folder}/"
-                    + (f" (+{len(assets)} asset file(s))" if assets else " (no metadata yet)"),
-                    "ok")
-            handle.advance(detail=row["filename"])
-        if loose:
-            stats["empty_dirs_removed"] = organizer.prune_empty_dirs(root)
-            scanner.sync(conn, root)
-    stats["failed_moves"] = failed
-    stats["moved_to_folders"] = moved
+    filed = file_loose_models(handle)
+    stats.update(filed)
+    moved, failed = filed["moved_to_folders"], filed["failed_moves"]
     resolved = (stats.get("resolve") or {}).get("resolved", 0)
     handle.progress(message=(
         f"{stats['found']} new model(s): {resolved} got metadata, "
@@ -428,12 +451,20 @@ def full_sync(handle: JobHandle) -> dict[str, Any]:
     Ordered cheapest-first so that a cancel partway through still leaves the
     library strictly better off than before.
     """
+    def file_new(h: JobHandle) -> dict[str, Any]:
+        # Resolve and previews just wrote sidecars and images next to models
+        # that may still be loose at the root. Re-index first or the move
+        # carries the model and leaves its brand-new metadata behind.
+        scanner.sync(*_ctx())
+        return file_loose_models(h)
+
     out: dict[str, Any] = {}
     stages: list[tuple[str, Callable[[JobHandle], Any]]] = [
         ("Scanning files", scan),
         ("Reading sidecars", ingest),
         ("Resolving metadata", resolve),
         ("Downloading previews", previews),
+        ("Filing loose models", file_new),
         ("Generating thumbnails", thumbs),
     ]
     for index, (label, fn) in enumerate(stages, start=1):
@@ -499,11 +530,12 @@ ACTIONS: dict[str, dict[str, Any]] = {
     "full-sync": {
         "label": "Update Everything", "fn": full_sync, "priority": "bulk",
         "group": "core", "primary": True,
-        "desc": "Find new files, read their info, download anything missing.",
+        "desc": "Find new files, get their info, file them into folders.",
         "help": "The one button that does the lot: look for new or changed models, "
                 "read any info files already on disk, download missing details and "
-                "preview pictures, then make thumbnails. Safe to run any time — your "
-                "own ratings, notes and trigger words are never overwritten."},
+                "preview pictures, give any model still sitting loose its own folder, "
+                "then make thumbnails. Safe to run any time — your own ratings, notes "
+                "and trigger words are never overwritten."},
     "quick-refresh": {
         "label": "Quick Refresh", "fn": quick_refresh, "priority": "interactive",
         "group": "core",
