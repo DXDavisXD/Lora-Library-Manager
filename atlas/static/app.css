@@ -294,7 +294,7 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
   display: flex; align-items: center; gap: 10px;
   flex: 1 1 auto; min-width: 0; justify-content: center;
 }
-.brand-logo { border-radius: 6px; display: block; flex: 0 0 auto; }
+.brand-logo { display: block; flex: 0 0 auto; color: var(--accent); }
 .search-wrap { position: relative; flex: 0 1 400px; min-width: 140px; }
 /* Clear the "/" badge sitting inside the field, or the placeholder and your
    typed text run underneath it. */
@@ -1499,3 +1499,75 @@ body.modal-open { overflow: hidden; }
   width: 34px; height: 26px; padding: 0; border-radius: 6px;
   border: 1px solid var(--border-strong); background: none; cursor: pointer;
 }
+
+
+/* ---------- adaptive: the open model's art drives its own controls ----------
+   The image hues already colour chips and trigger groups. With this on they
+   reach the panel's buttons too, including the primary one — which is why it
+   is opt-in: that button is otherwise the single colour that means "the main
+   action" everywhere in the app, and having it change per model is a choice,
+   not an improvement.
+
+   Not scoped to a surface. Colour and translucency are separate ideas, so this
+   works on solid as well. The var() fallbacks mean a greyscale preview, or one
+   with too little colour to call a winner, leaves the buttons alone. */
+:root[data-adaptive="1"] .detail-modal .btn.primary,
+:root[data-adaptive="1"] .detail-modal .btn[aria-pressed="true"] {
+  background: hsl(var(--dm-h, 232) var(--dm-s, 82%) 58%);
+  border-color: transparent;
+  color: hsl(var(--dm-h, 232) var(--dm-s, 82%) 12%);
+}
+:root[data-adaptive="1"] .detail-modal .btn.primary:hover,
+:root[data-adaptive="1"] .detail-modal .btn[aria-pressed="true"]:hover {
+  background: hsl(var(--dm-h, 232) var(--dm-s, 82%) 66%);
+}
+:root[data-adaptive="1"] .detail-modal .btn:not(.primary):not(.danger):not([aria-pressed="true"]) {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 60% / .16);
+  border-color: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 70% / .30);
+}
+:root[data-adaptive="1"] .detail-modal .btn:not(.primary):not(.danger):not([aria-pressed="true"]):hover {
+  background: hsl(var(--dm-h2, 232) var(--dm-s2, 82%) 62% / .30);
+}
+/* The rating stars follow too — they are the other thing you look at while a
+   model is open. Danger keeps its own colour: red has to stay red. */
+:root[data-adaptive="1"] .detail-modal .dm-star.on {
+  color: hsl(var(--dm-h2, 45) var(--dm-s2, 90%) 62%);
+}
+:root[data-theme="light"][data-adaptive="1"] .detail-modal .btn.primary,
+:root[data-theme="light"][data-adaptive="1"] .detail-modal .btn[aria-pressed="true"] {
+  background: hsl(var(--dm-h, 232) var(--dm-s, 62%) 42%);
+  color: #fff;
+}
+.accent-adaptive { margin-top: 10px; font-size: 12px; white-space: nowrap; }
+
+/* ---------- active filters, as pills in the search bar ---------- */
+.search-wrap { display: flex; align-items: center; gap: 6px; }
+.search-wrap #search {
+  flex: 1 1 auto; min-width: 60px;
+  border: 0; background: none; padding-left: 4px;
+}
+.search-pills { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 62%; overflow: hidden; }
+.search-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 4px 2px 9px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--text);
+  font-size: 11.5px; white-space: nowrap; max-width: 170px;
+}
+.search-pill-text { overflow: hidden; text-overflow: ellipsis; }
+.search-pill-x {
+  background: none; border: 0; color: inherit; cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 3px; opacity: .65;
+  border-radius: 50%;
+}
+.search-pill-x:hover { opacity: 1; color: var(--err); }
+/* The wrap itself carries the field's chrome now, since the input inside it
+   had to lose its own border for the pills to sit in the same box. */
+.search-wrap {
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 0 8px 0 6px;
+}
+.search-wrap:focus-within { border-color: var(--accent); }
+:root[data-surface="glass"] .search-wrap {
+  background: var(--glass-control); border-color: var(--glass-edge);
+}
+:root[data-surface="glass"] .search-wrap #search { background: none; }

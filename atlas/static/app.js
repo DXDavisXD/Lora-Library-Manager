@@ -1421,6 +1421,104 @@ function renderStats(stats) {
   updateResultCount();
 }
 
+/** Every active filter, as a removable pill in the search bar.
+ *
+ *  One list, in the order the filters are applied, each with its own cross.
+ *  Before this the state was scattered — category and sub-category in two
+ *  dropdowns, creator hidden inside the search text, the booleans off in the
+ *  sidebar — so nothing told you the full answer to "why am I only seeing
+ *  these?", and undoing one meant remembering where it lived.
+ */
+const BOOLEAN_PILLS = [
+  ['favorite', 'Favourites', 'filter-fav'],
+  ['rated', 'Rated', 'filter-rated'],
+  ['has_notes', 'Has notes', 'filter-notes'],
+  ['has_triggers', 'Custom triggers', 'filter-triggers'],
+  ['missing_preview', 'No preview', 'filter-nopreview'],
+];
+
+function renderFilterPills() {
+  const host = $('search-pills');
+  if (!host) return;
+  const f = state.filters;
+  const pills = [];
+
+  if (f.category) {
+    pills.push({
+      label: f.category === UNCATEGORISED ? 'Uncategorized' : f.category,
+      kind: 'Category',
+      clear: () => applyCategoryFilter('', ''),
+    });
+  }
+  if (f.subcategory) {
+    pills.push({
+      label: f.subcategory, kind: 'Sub-category',
+      clear: () => applyCategoryFilter(f.category, ''),
+    });
+  }
+  if (f.creator) {
+    pills.push({ label: f.creator, kind: 'Artist', clear: () => applyCreatorFilter('') });
+  }
+  if (f.base_model) {
+    pills.push({
+      label: f.base_model, kind: 'Base model',
+      clear: () => {
+        state.filters.base_model = '';
+        if (topPick.base) topPick.base.value = '';
+        resetResults();
+      },
+    });
+  }
+  if (f.meta_state === 'missing') {
+    pills.push({
+      label: 'Missing metadata', kind: 'Filter',
+      clear: () => {
+        state.filters.meta_state = '';
+        const box = $('filter-nometa'); if (box) box.checked = false;
+        resetResults();
+      },
+    });
+  }
+  if (f.nsfw === 'hide') {
+    pills.push({
+      label: 'NSFW hidden', kind: 'Filter',
+      clear: () => {
+        state.filters.nsfw = '';
+        const box = $('filter-sfw'); if (box) box.checked = false;
+        resetResults();
+      },
+    });
+  }
+  BOOLEAN_PILLS.forEach(([key, label, boxId]) => {
+    if (!f[key]) return;
+    pills.push({
+      label, kind: 'Filter',
+      clear: () => {
+        state.filters[key] = false;
+        const box = $(boxId); if (box) box.checked = false;
+        resetResults();
+      },
+    });
+  });
+
+  host.replaceChildren();
+  host.hidden = pills.length === 0;
+  pills.forEach((p) => {
+    const pill = el('span', 'search-pill');
+    pill.title = `${p.kind}: ${p.label}`;
+    pill.append(el('span', 'search-pill-text', p.label));
+    const x = el('button', 'search-pill-x', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', `Remove ${p.kind.toLowerCase()} filter ${p.label}`);
+    x.onclick = (event) => { event.stopPropagation(); p.clear(); };
+    pill.append(x);
+    host.append(pill);
+  });
+  // The box shrinks as pills take room, so the placeholder has to give way or
+  // it sits half-hidden behind them.
+  $('search').placeholder = pills.length ? '' : 'Search models, tags, triggers…';
+}
+
 /** The brand carries the count for both states.
  *
  * There used to be a bar of its own under the top bar whose entire job was to
@@ -1438,6 +1536,7 @@ function updateResultCount() {
     ? `${shown.toLocaleString()} of ${label(total)}`
     : label(total || shown);
   $('clear-filters').hidden = active === 0;
+  renderFilterPills();
 }
 
 async function refreshFacets() {
@@ -1622,12 +1721,11 @@ function applyCategoryFilter(category, subcategory = '') {
 }
 
 /** Filter the gallery down to one artist's models, from a card or anywhere else.
- *  Writes "artist: name" into the search box itself rather than a separate
- *  control — clearing or editing the search clears the filter too, so there is
- *  only one place that shows (and removes) an active search or artist filter. */
+ *  It used to sit in the search box as the literal text "artist: name". Now
+ *  that every filter shows as a pill there is one consistent place to see and
+ *  remove it, and the box goes back to being for typing. */
 function applyCreatorFilter(creator) {
-  const text = creator ? `artist: ${creator}` : '';
-  $('search').value = text;
+  $('search').value = '';
   syncSearchHint();
   state.filters.q = '';
   state.filters.creator = creator || '';
@@ -2070,6 +2168,20 @@ function applyAccent(hex) {
   paintAccentSwatch(hex);
 }
 
+/** Let the open model's own artwork drive its buttons, not just its chips.
+ *
+ *  Off by default: it is a deliberate look, and with it on the primary button
+ *  in the panel stops being the one colour it is everywhere else in the app.
+ *  Independent of the surface — this is about colour, not translucency, so it
+ *  works on solid too.
+ */
+function applyAdaptive(on) {
+  document.documentElement.dataset.adaptive = on ? '1' : '0';
+  localStorage.setItem('atlas-adaptive', on ? '1' : '0');
+  const box = document.querySelector('#adaptive-check');
+  if (box) box.checked = !!on;
+}
+
 function paintAccentSwatch(hex) {
   const dot = document.querySelector('#accent-toggle .accent-dot');
   if (dot) dot.style.background = hex || 'var(--accent)';
@@ -2104,6 +2216,16 @@ function accentMenu() {
   reset.onclick = () => { applyAccent(null); wrap.hidden = true; };
   row.append(custom, reset);
   wrap.append(row);
+
+  const adaptive = el('label', 'check accent-adaptive');
+  const box = el('input');
+  box.type = 'checkbox';
+  box.id = 'adaptive-check';
+  box.checked = localStorage.getItem('atlas-adaptive') === '1';
+  box.onchange = () => applyAdaptive(box.checked);
+  adaptive.append(box, document.createTextNode('Adapt to cover art'));
+  adaptive.title = "When a model is open, take its buttons from the preview's own colours";
+  wrap.append(adaptive);
 
   wrap.hidden = false;
   const away = (event) => {
@@ -2166,6 +2288,12 @@ function bindFilters() {
     clearTimeout(debounce);
     debounce = setTimeout(() => {
       const parsed = parseSearchInput(event.target.value);
+      // "artist: name" is still accepted as typed input, but it turns into a
+      // pill rather than staying in the box as text you would have to edit out.
+      if (parsed.creator) {
+        event.target.value = '';
+        syncSearchHint();
+      }
       state.filters.q = parsed.q;
       state.filters.creator = parsed.creator;
       resetResults();
@@ -2339,6 +2467,7 @@ async function init() {
   // library should get by default.
   applySurface(localStorage.getItem('atlas-surface') || 'solid');
   applyAccent(localStorage.getItem('atlas-accent'));
+  applyAdaptive(localStorage.getItem('atlas-adaptive') === '1');
 
   // The launch URL carries the session token; the server has now set it as a
   // cookie, so drop it from the address bar before it gets copied anywhere.
