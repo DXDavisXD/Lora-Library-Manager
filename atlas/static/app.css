@@ -97,6 +97,7 @@
   /* Less blur and more transparency than a frosted panel: the point is to see
      what is behind, shifted and brightened, not to hide it. Saturation does
      the lifting instead. */
+  --glass-popover:  rgba(22, 24, 30, 0.86);
   --glass-blur:     18px;
   --glass-sat:      185%;
   --glass-shadow:   0 10px 34px -12px rgba(0, 0, 0, 0.7);
@@ -120,6 +121,7 @@
   --glass-btn-hover: rgba(255, 255, 255, 0.95);
   --glass-btn-edge:  rgba(15, 23, 42, 0.16);
   --glass-accent:    rgba(79, 91, 213, 0.88);
+  --glass-popover:   rgba(252, 252, 254, 0.90);
   --glass-shadow:   0 10px 30px -14px rgba(15, 23, 42, 0.22);
 }
 
@@ -344,12 +346,16 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
   opacity: .45; cursor: not-allowed; color: var(--text-faint);
 }
 .topbar-actions { display: flex; gap: 8px; margin-left: 4px; flex: 0 0 auto; align-items: stretch; }
-/* Icon buttons in the nav take their height from the text buttons beside them
-   rather than a hard-coded 32px, which left the round ones sitting short of the
-   pills. aspect-ratio keeps them circular at whatever height that turns out to
-   be, so the row stays aligned if the type ever changes. */
+/* Icon buttons in the nav match the height of the text buttons beside them,
+   which a hard-coded 32px did not. Width is set explicitly rather than left to
+   aspect-ratio: a flex item with width:auto sizes to its content first, so the
+   ratio never got a chance to square it and border-radius:50% drew an ellipse.
+   --nav-btn is the text buttons' own height — 7px padding twice, 1px border
+   twice, on a 14px/1.5 line — so the two stay in step. */
+.topbar-actions { --nav-btn: 37px; }
 .topbar-actions .btn.icon {
-  height: auto; width: auto; aspect-ratio: 1 / 1; padding: 0;
+  width: var(--nav-btn); height: var(--nav-btn);
+  flex: 0 0 var(--nav-btn); padding: 0;
 }
 /* Width is set by balanceTopbar() in app.js; 0 until JS runs. */
 .topbar-edge-spacer { flex: 0 0 auto; width: 0; }
@@ -961,11 +967,16 @@ body.modal-open { overflow: hidden; }
    blurred or themed, and over artwork it renders as an opaque grey slab. This
    one is ours, so on the transparent surface it can be glass like everything
    else — and on solid it stays a plain opaque panel, which is cheaper. */
-:root[data-surface="glass"] .picker-panel {
-  background: var(--glass-tint-2);
+:root[data-surface="glass"] .picker-panel,
+:root[data-surface="glass"] .accent-menu {
+  /* Deliberately far more opaque than a panel, and blurred harder. A large
+     surface can afford to be sheer because you read the thing *on* it; a popup
+     is a list of short strings floating over artwork, and at panel tint the
+     text behind it competes with the text in it. Readable first. */
+  background: var(--glass-popover);
   border-color: var(--glass-edge);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(30px) saturate(var(--glass-sat));
+  backdrop-filter: blur(30px) saturate(var(--glass-sat));
   box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
 }
 .picker-search { padding: 7px; border-bottom: 1px solid var(--border); }
@@ -996,12 +1007,6 @@ body.modal-open { overflow: hidden; }
 :root[data-surface="glass"] .picker-button {
   background: var(--glass-control); border-color: var(--glass-edge);
   border-radius: var(--radius-pill);
-}
-:root[data-surface="glass"] .picker-panel {
-  background: var(--glass-tint-2); border-color: var(--glass-edge);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
 }
 
 /* Notes are usually a line or two — keep them compact so the trigger editor

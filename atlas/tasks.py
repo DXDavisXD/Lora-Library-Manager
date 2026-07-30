@@ -60,9 +60,18 @@ def scan(handle: JobHandle) -> dict[str, Any]:
 
 
 def ingest(handle: JobHandle) -> dict[str, Any]:
+    """Re-read every sidecar on disk, not only the ones we cannot describe.
+
+    only_unknown=False on purpose. This is the button whose whole job is "read
+    the files next to my models again", and skipping anything already graded
+    complete meant it silently did nothing on a fully-indexed library — so an
+    improvement to how sidecars are parsed could never reach models that were
+    already imported. Reading is offline and cheap: a thousand sidecars parse
+    in well under a second.
+    """
     conn, root = _ctx()
     handle.progress(0, "Reading sidecars...")
-    stats = enrich.ingest_sidecars(conn, root, handle)
+    stats = enrich.ingest_sidecars(conn, root, handle, only_unknown=False)
     handle.progress(message=(
         f"Described {stats['described']} of {stats['scanned']} "
         f"({stats['repaired']} needed repair)"
@@ -572,7 +581,9 @@ ACTIONS: dict[str, dict[str, Any]] = {
         "desc": "Read info files already saved next to your models.",
         "help": "Many models come with a companion file — the same name as the model "
                 "but ending .json — holding its description, trigger words and so on. "
-                "This reads those into the gallery. Completely offline."},
+                "This re-reads all of them into the gallery, including models already "
+                "imported, so anything improved since last time gets picked up. "
+                "Completely offline — your own ratings and notes are untouched."},
     "resolve": {
         "label": "Download Metadata", "fn": resolve, "priority": "bulk",
         "group": "metadata",
