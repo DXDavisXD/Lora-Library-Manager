@@ -2192,7 +2192,8 @@ const shift = (rgb, amount) => rgb.map(
  */
 function applyAccent(hex) {
   const root = document.documentElement;
-  const keys = ['--accent', '--accent-hover', '--accent-soft', '--accent-text', '--glass-accent'];
+  const keys = ['--accent', '--accent-rgb', '--accent-hover', '--accent-soft',
+                '--accent-text', '--glass-accent'];
   if (!hex) {
     keys.forEach((k) => root.style.removeProperty(k));
     localStorage.removeItem('atlas-accent');
@@ -2205,6 +2206,9 @@ function applyAccent(hex) {
   // Hover moves away from the page: brighter on dark, deeper on light.
   const hover = shift(rgb, light ? -0.22 : 0.22);
   root.style.setProperty('--accent', `rgb(${rgb.join(',')})`);
+  // Channels on their own, so the ambient wash can build the same hue at any
+  // alpha — CSS cannot take rgb() apart again.
+  root.style.setProperty('--accent-rgb', rgb.join(', '));
   root.style.setProperty('--accent-hover', `rgb(${hover.join(',')})`);
   root.style.setProperty('--accent-soft', `rgba(${rgb.join(',')}, ${light ? 0.13 : 0.16})`);
   // Label colour is measured, not guessed — amber and slate need opposite text.

@@ -20,6 +20,7 @@
   --text-muted:    #9aa2ae;
   --text-faint:    #6b7280;
   --accent:        #7c8cff;
+  --accent-rgb:    124, 140, 255;
   --accent-hover:  #94a1ff;
   --accent-soft:   rgba(124, 140, 255, 0.16);
   --accent-text:   #0b0c0e;
@@ -55,6 +56,7 @@
   --text-muted:    #55607a;
   --text-faint:    #8891a4;
   --accent:        #4f5bd5;
+  --accent-rgb:    79, 91, 213;
   --accent-hover:  #3f49b8;
   --accent-soft:   rgba(79, 91, 213, 0.13);
   --accent-text:   #ffffff;
@@ -157,16 +159,22 @@ body {
    body draws behind its content — which silently swallowed this gradient. */
 html { background: var(--bg); }
 :root[data-surface="glass"] body {
+  /* Built from the accent rather than three fixed colours. The top-left blob
+     sits directly behind the brand and the sidebar toggle, so a hard-coded
+     indigo left that corner blue no matter which accent was chosen — the one
+     part of the chrome that ignored the colour scheme. Three stops of the same
+     hue at different alphas keep the depth without reintroducing a second
+     colour that cannot follow. */
   background:
-    radial-gradient(1100px 760px at 12% -12%, rgba(124, 140, 255, 0.22), transparent 62%),
-    radial-gradient(880px 680px at 88% -4%,  rgba(52, 211, 153, 0.12), transparent 58%),
-    radial-gradient(980px 860px at 52% 112%, rgba(168, 85, 247, 0.16), transparent 60%);
+    radial-gradient(1100px 760px at 12% -12%, rgba(var(--accent-rgb), 0.24), transparent 62%),
+    radial-gradient(880px 680px at 88% -4%,  rgba(var(--accent-rgb), 0.10), transparent 58%),
+    radial-gradient(980px 860px at 52% 112%, rgba(var(--accent-rgb), 0.15), transparent 60%);
 }
 :root[data-theme="light"][data-surface="glass"] body {
   background:
-    radial-gradient(1100px 760px at 12% -12%, rgba(79, 91, 213, 0.18), transparent 62%),
-    radial-gradient(880px 680px at 88% -4%,  rgba(4, 120, 87, 0.10), transparent 58%),
-    radial-gradient(980px 860px at 52% 112%, rgba(147, 51, 234, 0.13), transparent 60%);
+    radial-gradient(1100px 760px at 12% -12%, rgba(var(--accent-rgb), 0.20), transparent 62%),
+    radial-gradient(880px 680px at 88% -4%,  rgba(var(--accent-rgb), 0.09), transparent 58%),
+    radial-gradient(980px 860px at 52% 112%, rgba(var(--accent-rgb), 0.12), transparent 60%);
 }
 
 h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; }
