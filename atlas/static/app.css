@@ -271,7 +271,36 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 
 .check { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; font-size: 13px; }
 .check.inline { display: inline-flex; }
-.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+/* `accent-color` only tints the *checked* fill — an unchecked box keeps the
+   platform's own white square, which on a dark sidebar reads as seven bright
+   chips before you have selected anything. Drawing the box ourselves is the
+   only way it can follow the theme in both states. */
+.check input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  flex: 0 0 auto; width: 16px; height: 16px; margin: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;               /* squircle, to match the chips */
+  background: var(--bg-sunken);
+  display: grid; place-content: center;
+  cursor: pointer;
+  transition: background var(--speed) ease, border-color var(--speed) ease;
+}
+.check input[type="checkbox"]::after {
+  content: ''; width: 10px; height: 10px;
+  background: var(--accent-text);
+  transform: scale(0);
+  transition: transform var(--speed) ease;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+.check input[type="checkbox"]:checked {
+  background: var(--accent); border-color: var(--accent);
+}
+.check input[type="checkbox"]:checked::after { transform: scale(1); }
+.check:hover input[type="checkbox"]:not(:checked) { border-color: var(--accent); }
+.check input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.check:has(input:checked) { color: var(--text); }
 
 /* ---------- topbar ---------- */
 .topbar {
@@ -1504,6 +1533,18 @@ body.modal-open { overflow: hidden; }
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
   box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
 }
+/* Checkboxes take the glass tokens but deliberately no backdrop-filter of
+   their own: there are seven of them in the sidebar, they are 16px, and they
+   already sit on a blurred panel — the blur would cost real frames and buy
+   nothing you could see at that size. */
+:root[data-surface="glass"] .check input[type="checkbox"] {
+  background: var(--glass-control); border-color: var(--glass-edge);
+}
+:root[data-surface="glass"] .check input[type="checkbox"]:checked {
+  background: var(--accent); border-color: var(--accent);
+  box-shadow: inset 0 1px 0 var(--glass-specular);
+}
+
 .accent-grid {
   display: grid; grid-template-columns: repeat(6, 22px); gap: 7px;
 }

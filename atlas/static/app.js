@@ -2287,6 +2287,55 @@ function parseSearchInput(raw) {
   return match ? { q: '', creator: match[1].trim() } : { q: trimmed, creator: '' };
 }
 
+/** The "Show only" checkboxes, described once.
+ *
+ * Three separate places need this same list — the change bindings, the
+ * clear-all handler and the saved state — and they were drifting apart as
+ * ids got added. A checkbox missing from one of those lists fails quietly:
+ * it filters but never clears, or clears but never persists.
+ */
+const SHOW_ONLY = [
+  { id: 'filter-fav', key: 'favorite' },
+  { id: 'filter-rated', key: 'rated' },
+  { id: 'filter-notes', key: 'has_notes' },
+  { id: 'filter-triggers', key: 'has_triggers' },
+  { id: 'filter-nometa', key: 'meta_state', transform: (on) => (on ? 'missing' : '') },
+  { id: 'filter-nopreview', key: 'missing_preview' },
+  { id: 'filter-sfw', key: 'nsfw', transform: (on) => (on ? 'hide' : '') },
+].map((entry) => ({ transform: (on) => on, ...entry }));
+
+const SHOW_ONLY_KEY = 'atlas-show-only';
+
+/** Remember which of these are ticked, by id.
+ *
+ * Ids rather than a positional array, so adding or reordering a checkbox
+ * later can't silently shift someone's saved "Hide NSFW" onto a different
+ * filter — which is the one in this list you least want turning itself off.
+ */
+function saveShowOnly() {
+  const on = SHOW_ONLY.filter(({ id }) => $(id).checked).map(({ id }) => id);
+  try {
+    localStorage.setItem(SHOW_ONLY_KEY, JSON.stringify(on));
+  } catch (err) {
+    /* Private mode, or the quota is full. Not worth interrupting anyone for. */
+  }
+}
+
+function restoreShowOnly() {
+  let saved = [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(SHOW_ONLY_KEY) || '[]');
+    if (Array.isArray(raw)) saved = raw;
+  } catch (err) {
+    /* Hand-edited or half-written value; fall back to everything off. */
+  }
+  SHOW_ONLY.forEach(({ id, key, transform }) => {
+    const on = saved.includes(id);
+    $(id).checked = on;
+    state.filters[key] = transform(on);
+  });
+}
+
 function bindFilters() {
   let debounce;
   $('search').addEventListener('input', (event) => {
@@ -2311,21 +2360,14 @@ function bindFilters() {
     }, 220);
   });
 
-  const bind = (id, key, transform = (v) => v) => {
+  // Sort now lives in the top bar.
+  SHOW_ONLY.forEach(({ id, key, transform }) => {
     $(id).addEventListener('change', (event) => {
-      const target = event.target;
-      state.filters[key] = transform(target.type === 'checkbox' ? target.checked : target.value);
+      state.filters[key] = transform(event.target.checked);
+      saveShowOnly();
       resetResults();
     });
-  };
-  // Sort now lives in the top bar.
-  bind('filter-fav', 'favorite');
-  bind('filter-rated', 'rated');
-  bind('filter-notes', 'has_notes');
-  bind('filter-triggers', 'has_triggers');
-  bind('filter-nometa', 'meta_state', (checked) => (checked ? 'missing' : ''));
-  bind('filter-nopreview', 'missing_preview');
-  bind('filter-sfw', 'nsfw', (checked) => (checked ? 'hide' : ''));
+  });
 
   // Category cascade: choosing a category resets the sub-category and reveals
   // its options; choosing a sub-category narrows further.
@@ -2337,9 +2379,8 @@ function bindFilters() {
     if (topPick.category) topPick.category.value = '';
     if (topPick.subcategory) topPick.subcategory.value = '';
     paintSubcategories();
-    ['filter-fav', 'filter-rated', 'filter-notes', 'filter-triggers',
-     'filter-nometa', 'filter-nopreview', 'filter-sfw']
-      .forEach((id) => { $(id).checked = false; });
+    SHOW_ONLY.forEach(({ id }) => { $(id).checked = false; });
+    saveShowOnly();
     resetResults();
   };
 }
@@ -2489,6 +2530,10 @@ async function init() {
   bindFilters();
   bindChrome();
   bindLibraryRoot();
+  // Before the first fetch, so the opening page of results already honours
+  // them — restoring afterwards would flash the unfiltered library first,
+  // which for "Hide NSFW" is exactly the wrong half-second.
+  restoreShowOnly();
 
   try {
     const boot = await apiGet('/api/bootstrap');
