@@ -303,7 +303,7 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
   flex: 1 1 auto; min-width: 0; justify-content: center;
 }
 .brand-logo { display: block; flex: 0 0 auto; color: var(--accent); }
-.search-wrap { position: relative; flex: 0 1 400px; min-width: 140px; }
+.search-wrap { position: relative; flex: 0 1 520px; min-width: 140px; }
 /* Clear the "/" badge sitting inside the field, or the placeholder and your
    typed text run underneath it. */
 #search { padding-right: 34px; }
@@ -332,9 +332,11 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
    as a flex child costs one more inter-item gap, which is folded into the
    number below:
    132(select) + 132(select) + 32(icon) + 32(icon) + 3*7(gaps)         <- lead  = 349
-   150(base)   + 132(select) + 1*7(gap) + 1*7(gap before this spacer)  <- trail = 296 + spacer
-   349 - 296 = 53 */
-.topbar-filters-trail::after { content: ''; display: block; flex: 0 0 53px; }
+   146(base)   + 132(select) + 1*7(gap) + 1*7(gap before this spacer)  <- trail = 292 + spacer
+   349 - 292 = 57
+   Recompute this if any of those widths change, or the search box slides off
+   centre — which is how it drifted right the last time. */
+.topbar-filters-trail::after { content: ''; display: block; flex: 0 0 57px; }
 .btn.icon.danger { color: var(--err); }
 .btn.icon.danger:hover:not([disabled]) {
   background: var(--err); border-color: var(--err); color: #fff;
@@ -939,8 +941,12 @@ body.modal-open { overflow: hidden; }
    pinned to a fixed width for the same reason they were — an auto-width control
    resizes to whatever option is chosen and slides the search box sideways every
    time you change a filter. */
-.tb-pick { flex: 0 1 150px; width: 150px; min-width: 96px; }
-#filter-base.tb-pick { flex-basis: 168px; width: 168px; }
+/* Narrow enough to hand the search box back ~70px, wide enough that no label
+   truncates. These are floors, not preferences: "All categories" needs 132
+   and "All base models" needs 146, measured against the rendered font. Trim
+   either and the label ellipsises. */
+.tb-pick { flex: 0 1 132px; width: 132px; min-width: 96px; }
+#filter-base.tb-pick { flex-basis: 146px; width: 146px; }
 .picker-compact .picker-button {
   padding: 6px 26px 6px 10px; font-size: 12.5px;
   border-radius: var(--radius-pill);
@@ -1144,13 +1150,14 @@ body.modal-open { overflow: hidden; }
    so category, base model and sort stay reachable at every size. The cutoff is
    just above the width at which brand + four selects + search + nav stop
    fitting side by side (~1380px), so they wrap rather than collide. */
-/* The bar wants ~1860px to lay everything out at its natural size, and the
+/* The bar wants ~1772px to lay everything out at its natural size, and the
    search box is the only thing in it that can give ground — so below that it
    absorbs every pixel of the shortfall and collapses to its floor. That was
    survivable when it held only text; with filter pills inside it, it isn't.
-   Wrapping at 1700 hands the filters their own row while the search box still
-   has room to be a search box. */
-@media (max-width: 1700px) {
+   Wrapping just above that figure means the single-row layout only happens
+   when everything genuinely fits, and the filters get their own row the
+   moment they'd otherwise be eating the search box. */
+@media (max-width: 1780px) {
   .topbar { flex-wrap: wrap; row-gap: 8px; }
   .topbar-centre { order: 3; flex-basis: 100%; justify-content: flex-start; }
   .search-wrap { flex: 1 1 200px; }
