@@ -9,8 +9,7 @@ you ask.
 
 ![The gallery](docs/gallery.webp)
 
-*Screenshots use a generated demo library — the artwork is placeholder gradients,
-not model output.*
+*Screenshots are from a real library of 107 models, with "Hide NSFW" on.*
 
 ---
 
@@ -111,6 +110,23 @@ missing preview, hide NSFW — and a running count of each.
 Search is full-text across names, creators, base models, tags, trigger words,
 filenames and your own notes. Typing `artist:` followed by a name narrows to one
 creator; clicking any artist name on a card does the same thing for you.
+
+Whatever you have narrowed to shows as pills at the front of the search box —
+category, sub-category and artist — each with a cross that clears just that one.
+The sidebar's show-only checkboxes are remembered between sessions and applied
+before the first results are drawn, so a library you always browse with NSFW
+hidden opens that way rather than flashing the unfiltered grid first.
+
+### Appearance
+
+Light and dark, and two surfaces: the default solid one, and a transparent mode
+that blurs the content moving behind the chrome. Pick the accent from a palette
+or a colour well and the whole interface follows it, including the checkboxes
+and the ambient wash behind the header. An adaptive option goes further and lets
+the artwork of the card you have open drive the tint.
+
+Solid is the default on purpose. Transparency costs frames, and a large library
+should get the cheaper surface unless you go looking for the other one.
 
 ### The detail view
 
