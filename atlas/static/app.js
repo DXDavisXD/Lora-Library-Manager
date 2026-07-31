@@ -1555,11 +1555,45 @@ function updateResultCount() {
   const total = state.libraryTotal;
   const shown = state.total;
   const label = (n) => `${n.toLocaleString()} model${n === 1 ? '' : 's'}`;
+  reserveCountWidth(total || shown, label);
   $('brand-count').textContent = (active && total && shown !== total)
     ? `${shown.toLocaleString()} of ${label(total)}`
     : label(total || shown);
   $('clear-filters').hidden = active === 0;
   renderFilterPills();
+}
+
+let countReserve = -1;
+
+/** Hold the count at the width of the longest thing it can ever say.
+ *
+ * "107 models" and "4 of 107 models" are different widths, so ticking a
+ * filter used to widen the brand — and the brand is one of the two flanks
+ * balanceTopbar measures, so the spacer was recomputed and the whole row
+ * resettled, visibly shrinking the search box. Reserving the space costs the
+ * search box a few tens of pixels once, instead of moving it on every filter.
+ *
+ * Measured rather than guessed in `ch`, because only the digits are tabular —
+ * "of" and "models" are not. Re-measured only when the library total changes.
+ */
+function reserveCountWidth(total, label) {
+  if (total === countReserve || !total) return;
+  countReserve = total;
+  const node = $('brand-count');
+  const style = getComputedStyle(node);
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+  probe.style.font = style.font;
+  probe.style.fontFamily = style.fontFamily;
+  probe.style.fontSize = style.fontSize;
+  probe.style.fontWeight = style.fontWeight;
+  probe.style.letterSpacing = style.letterSpacing;
+  probe.style.fontVariantNumeric = style.fontVariantNumeric;
+  // The widest form: the filtered count can have as many digits as the total.
+  probe.textContent = `${total.toLocaleString()} of ${label(total)}`;
+  document.body.append(probe);
+  node.style.minWidth = `${Math.ceil(probe.getBoundingClientRect().width)}px`;
+  probe.remove();
 }
 
 async function refreshFacets() {
