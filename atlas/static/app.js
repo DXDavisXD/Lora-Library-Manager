@@ -1559,7 +1559,6 @@ function updateResultCount() {
   $('brand-count').textContent = (active && total && shown !== total)
     ? `${shown.toLocaleString()} of ${label(total)}`
     : label(total || shown);
-  $('clear-filters').hidden = active === 0;
   renderFilterPills();
 }
 
@@ -2423,21 +2422,6 @@ function bindFilters() {
       resetResults();
     });
   });
-
-  // Category cascade: choosing a category resets the sub-category and reveals
-  // its options; choosing a sub-category narrows further.
-  $('clear-filters').onclick = () => {
-    state.filters = { ...EMPTY_FILTERS, sort: state.filters.sort };
-    $('search').value = '';
-    syncSearchHint();
-    if (topPick.base) topPick.base.value = '';
-    if (topPick.category) topPick.category.value = '';
-    if (topPick.subcategory) topPick.subcategory.value = '';
-    paintSubcategories();
-    SHOW_ONLY.forEach(({ id }) => { $(id).checked = false; });
-    saveShowOnly();
-    resetResults();
-  };
 }
 
 /** Mark whether focus is currently being moved by keyboard.
