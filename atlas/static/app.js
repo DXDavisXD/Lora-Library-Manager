@@ -2296,12 +2296,17 @@ function bindFilters() {
       const parsed = parseSearchInput(event.target.value);
       // "artist: name" is still accepted as typed input, but it turns into a
       // pill rather than staying in the box as text you would have to edit out.
+      //
+      // Only touch the artist filter when that syntax was actually used. This
+      // used to assign it either way, so an artist set by clicking a card's
+      // name was wiped by the next character typed into the box — the pill
+      // vanished mid-search. Clearing it is the pill's cross, not this.
       if (parsed.creator) {
         event.target.value = '';
         syncSearchHint();
+        state.filters.creator = parsed.creator;
       }
       state.filters.q = parsed.q;
-      state.filters.creator = parsed.creator;
       resetResults();
     }, 220);
   });

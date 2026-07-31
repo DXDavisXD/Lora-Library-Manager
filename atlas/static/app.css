@@ -1579,7 +1579,11 @@ body.modal-open { overflow: hidden; }
   padding: 2px 4px 2px 9px; border-radius: var(--radius-pill);
   background: var(--accent-soft); color: var(--text);
   font-size: 11.5px; white-space: nowrap;
-  flex: 0 1 auto; min-width: 0; max-width: 128px;
+  /* A cap, not a fixed width. Series and game names run long and no single
+     pill should eat the field — but padding "Anime" out to match "Mushoku
+     Tensei" would spend the room the cap just saved. The untruncated value
+     stays on the pill's tooltip. */
+  flex: 0 1 auto; min-width: 0; max-width: 96px;
 }
 .search-pill-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .search-pill-x {
