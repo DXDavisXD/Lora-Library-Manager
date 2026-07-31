@@ -1144,7 +1144,13 @@ body.modal-open { overflow: hidden; }
    so category, base model and sort stay reachable at every size. The cutoff is
    just above the width at which brand + four selects + search + nav stop
    fitting side by side (~1380px), so they wrap rather than collide. */
-@media (max-width: 1400px) {
+/* The bar wants ~1860px to lay everything out at its natural size, and the
+   search box is the only thing in it that can give ground — so below that it
+   absorbs every pixel of the shortfall and collapses to its floor. That was
+   survivable when it held only text; with filter pills inside it, it isn't.
+   Wrapping at 1700 hands the filters their own row while the search box still
+   has room to be a search box. */
+@media (max-width: 1700px) {
   .topbar { flex-wrap: wrap; row-gap: 8px; }
   .topbar-centre { order: 3; flex-basis: 100%; justify-content: flex-start; }
   .search-wrap { flex: 1 1 200px; }
@@ -1550,22 +1556,36 @@ body.modal-open { overflow: hidden; }
 
 /* ---------- active filters, as pills in the search bar ---------- */
 .search-wrap { display: flex; align-items: center; gap: 6px; }
+/* `flex-basis: 0`, not `auto`, and the reason is the shared input rule further
+   up that sets `width: 100%`. With basis `auto` the field's basis resolves to
+   that full width, so it asks for the whole box and every pill beside it gets
+   shrunk to pay for it — pills came out ellipsised even with 500px of room
+   going spare. From zero the field simply takes what the pills leave. */
 .search-wrap #search {
-  flex: 1 1 auto; min-width: 60px;
+  flex: 1 1 0; min-width: 92px;
   border: 0; background: none; padding-left: 4px;
 }
-.search-pills { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 62%; overflow: hidden; }
+/* Pills shrink before the search field does, and each one ellipsises rather
+   than the row being clipped. `overflow: hidden` on a row of non-shrinking
+   items does not degrade — it simply cuts the last one in half, which is what
+   three filters at once looked like. min-width:0 is what actually lets a flex
+   item shrink below its content. */
+.search-pills {
+  display: flex; align-items: center; gap: 5px;
+  flex: 0 1 auto; min-width: 0;
+}
 .search-pill {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 2px 4px 2px 9px; border-radius: var(--radius-pill);
   background: var(--accent-soft); color: var(--text);
-  font-size: 11.5px; white-space: nowrap; max-width: 170px;
+  font-size: 11.5px; white-space: nowrap;
+  flex: 0 1 auto; min-width: 0; max-width: 128px;
 }
-.search-pill-text { overflow: hidden; text-overflow: ellipsis; }
+.search-pill-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .search-pill-x {
   background: none; border: 0; color: inherit; cursor: pointer;
   font-size: 14px; line-height: 1; padding: 0 3px; opacity: .65;
-  border-radius: 50%;
+  border-radius: 50%; flex: 0 0 auto;
 }
 .search-pill-x:hover { opacity: 1; color: var(--err); }
 /* The wrap itself carries the field's chrome now, since the input inside it

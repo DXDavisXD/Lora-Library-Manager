@@ -1475,13 +1475,6 @@ function renderStats(stats) {
  *  sidebar — so nothing told you the full answer to "why am I only seeing
  *  these?", and undoing one meant remembering where it lived.
  */
-const BOOLEAN_PILLS = [
-  ['favorite', 'Favourites', 'filter-fav'],
-  ['rated', 'Rated', 'filter-rated'],
-  ['has_notes', 'Has notes', 'filter-notes'],
-  ['has_triggers', 'Custom triggers', 'filter-triggers'],
-  ['missing_preview', 'No preview', 'filter-nopreview'],
-];
 
 function renderFilterPills() {
   const host = $('search-pills');
@@ -1505,47 +1498,10 @@ function renderFilterPills() {
   if (f.creator) {
     pills.push({ label: f.creator, kind: 'Artist', clear: () => applyCreatorFilter('') });
   }
-  if (f.base_model) {
-    pills.push({
-      label: f.base_model, kind: 'Base model',
-      clear: () => {
-        state.filters.base_model = '';
-        if (topPick.base) topPick.base.value = '';
-        resetResults();
-      },
-    });
-  }
-  if (f.meta_state === 'missing') {
-    pills.push({
-      label: 'Missing metadata', kind: 'Filter',
-      clear: () => {
-        state.filters.meta_state = '';
-        const box = $('filter-nometa'); if (box) box.checked = false;
-        resetResults();
-      },
-    });
-  }
-  if (f.nsfw === 'hide') {
-    pills.push({
-      label: 'NSFW hidden', kind: 'Filter',
-      clear: () => {
-        state.filters.nsfw = '';
-        const box = $('filter-sfw'); if (box) box.checked = false;
-        resetResults();
-      },
-    });
-  }
-  BOOLEAN_PILLS.forEach(([key, label, boxId]) => {
-    if (!f[key]) return;
-    pills.push({
-      label, kind: 'Filter',
-      clear: () => {
-        state.filters[key] = false;
-        const box = $(boxId); if (box) box.checked = false;
-        resetResults();
-      },
-    });
-  });
+  // Deliberately only these three. The sidebar toggles and base-model filter
+  // each have a visible control of their own that already shows they are on;
+  // pilling them too said the same thing twice and, at three pills or more,
+  // squeezed the search field down to a sliver.
 
   host.replaceChildren();
   host.hidden = pills.length === 0;
