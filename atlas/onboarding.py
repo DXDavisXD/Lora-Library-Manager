@@ -9,9 +9,7 @@ that writes, and never require an API key to get started.
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
-from typing import Iterable
 
 from . import config
 

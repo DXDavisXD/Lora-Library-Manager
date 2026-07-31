@@ -19,7 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from . import config, db, hashing, providers, sidecar
 from .jobs import JobHandle

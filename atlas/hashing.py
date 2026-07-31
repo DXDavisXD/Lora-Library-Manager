@@ -19,10 +19,9 @@ is to do as little of it as possible:
 from __future__ import annotations
 
 import hashlib
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable
 
 from . import config, db
 

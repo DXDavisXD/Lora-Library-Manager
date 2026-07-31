@@ -248,28 +248,6 @@ input[type="password"], select, textarea {
 }
 textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 
-/* Chromium reserves room for its native dropdown arrow *inside* the content
-   box, on top of whatever padding-right you set, so option labels were being
-   clipped in the fixed-width top-bar selects that had space for them. Those get
-   a chevron we draw ourselves, which hands padding-right full control of the
-   text area. The CSP allows `data:` images.
-
-   Scoped to .tb-select on purpose. A percentage background-position resolves
-   against zero on a `width: 100%` select inside a backdrop-filtered ancestor,
-   which parks the chevron in the top-left corner — so every other select, all
-   of which are full-width and never truncate, keeps the native arrow. */
-.tb-select {
-  appearance: none; -webkit-appearance: none;
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 11px 11px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%239aa2ae' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-}
-:root[data-theme="light"] .tb-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2355607a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-}
-.tb-select:disabled { background-image: none; }
-
 .check { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; font-size: 13px; }
 .check.inline { display: inline-flex; }
 /* `accent-color` only tints the *checked* fill — an unchecked box keeps the
@@ -319,11 +297,6 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
    image against the text is what left the logo sitting visibly high. */
 .brand { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
 .brand-text { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
-.brand-mark {
-  width: 11px; height: 11px; border-radius: 3px;
-  background: linear-gradient(135deg, var(--accent), var(--ok));
-  align-self: center;
-}
 .brand-name { font-weight: 650; letter-spacing: -.01em; line-height: 1; }
 .brand-count {
   color: var(--text-faint); font-size: 12px; line-height: 1;
@@ -378,16 +351,6 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
    option happens to be chosen, which slides the search bar sideways every time
    you change a filter. It can still shrink when the bar runs out of room —
    that is width pressure, not the label, so the bar stays put in normal use. */
-.tb-select {
-  width: 132px; flex: 0 1 132px; min-width: 92px; padding: 6px 26px 6px 10px;
-  font-size: 12.5px; text-overflow: ellipsis;
-}
-#filter-base { width: 150px; flex-basis: 150px; }   /* "All base models" + counts */
-/* Greyed rather than removed: the sub-category slot keeps its place so the
-   topbar does not reflow the moment you pick a category. */
-.tb-select:disabled {
-  opacity: .45; cursor: not-allowed; color: var(--text-faint);
-}
 .topbar-actions { display: flex; gap: 8px; margin-left: 4px; flex: 0 0 auto; align-items: stretch; }
 /* Icon buttons in the nav match the height of the text buttons beside them,
    which a hard-coded 32px did not. Width is set explicitly rather than left to
@@ -617,20 +580,6 @@ body.sidebar-collapsed .sidebar {
 /* ---------- manage ---------- */
 .manage-scroll { flex: 1 1 auto; overflow-y: auto; padding: 18px; }
 
-/* Health strip at the top of Manage. */
-.manage-health {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px; margin-bottom: var(--gap);
-}
-.health-tile {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--radius-s); padding: 12px 14px;
-}
-.health-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.health-value.warn { color: var(--warn); }
-.health-value.ok { color: var(--ok); }
-.health-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
-
 .panel-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: var(--gap);
   align-content: start;
@@ -694,7 +643,6 @@ body.sidebar-collapsed .sidebar {
 
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .opt-row { display: flex; flex-direction: column; gap: 4px; }
-.action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 
 .queue-list { display: flex; flex-direction: column; gap: 6px; }
@@ -1215,7 +1163,6 @@ body.modal-open { overflow: hidden; }
   .topbar-centre { flex-wrap: wrap; row-gap: 8px; }
   .search-wrap { flex-basis: 100%; }
   .topbar-filters { flex-basis: 100%; justify-content: flex-start; }
-  .tb-select { flex: 1 1 0; min-width: 0; max-width: none; }
   .brand-count { display: none; }
 }
 @media (max-width: 620px) {
@@ -1360,7 +1307,6 @@ body.modal-open { overflow: hidden; }
 :root[data-surface="glass"] .btn[disabled] {
   -webkit-backdrop-filter: none; backdrop-filter: none;
 }
-:root[data-surface="glass"] .tb-select,
 :root[data-surface="glass"] input[type="search"],
 :root[data-surface="glass"] input[type="password"],
 :root[data-surface="glass"] input[type="text"],
@@ -1471,7 +1417,6 @@ body.modal-open { overflow: hidden; }
 :root[data-theme="light"][data-surface="glass"] .status-strip {
   border-bottom-color: rgba(15, 23, 42, 0.12);
 }
-:root[data-theme="light"][data-surface="glass"] .tb-select,
 :root[data-theme="light"][data-surface="glass"] input[type="search"],
 :root[data-theme="light"][data-surface="glass"] input[type="password"],
 :root[data-theme="light"][data-surface="glass"] .btn {
@@ -1489,7 +1434,6 @@ body.modal-open { overflow: hidden; }
   :root[data-surface="glass"] .sidebar,
   :root[data-surface="glass"] .panel,
   :root[data-surface="glass"] .detail-modal,
-  :root[data-surface="glass"] .tb-select,
   :root[data-surface="glass"] input[type="search"],
   :root[data-surface="glass"] input[type="password"],
   :root[data-surface="glass"] input[type="text"],
