@@ -428,23 +428,38 @@ def fetch_previews(conn, root: Path, handle: JobHandle | None = None,
             continue
         try:
             info = provider.fetch_by_id(row["provider_model_id"], row["provider_version_id"])
-            url = info.preview_urls[0] if info and info.preview_urls else ""
-            if not url:
+            candidates = _image_candidates(info)
+            if not candidates:
+                stats["skipped"] += 1
+            elif config.get("dry_run"):
                 stats["skipped"] += 1
             else:
                 model_path = root / row["path"]
-                suffix = Path(urllib.parse.urlparse(url).path).suffix.lower()
-                if suffix not in config.IMAGE_EXTENSIONS:
-                    suffix = ".png"
-                target = model_path.with_suffix("").with_suffix(suffix)
-                if config.get("dry_run"):
-                    stats["skipped"] += 1
-                elif _download(url, target, provider):
-                    rel = target.relative_to(root).as_posix()
+                saved = ""
+                for url in candidates:
+                    suffix = Path(urllib.parse.urlparse(url).path).suffix.lower()
+                    if suffix not in config.IMAGE_EXTENSIONS:
+                        suffix = ".png"
+                    target = model_path.with_suffix("").with_suffix(suffix)
+                    if not _download(url, target, provider):
+                        continue
+                    # The URL said image and the provider said image, but a
+                    # mislabelled entry would leave a video sitting under a
+                    # .png name — present on disk, blank in the gallery. Cheap
+                    # enough to confirm from the bytes before recording it.
+                    if not _looks_like_image(target):
+                        target.unlink(missing_ok=True)
+                        if handle:
+                            handle.log(f"preview {row['filename']}: "
+                                       f"not an image, trying the next one", "warn")
+                        continue
+                    saved = target.relative_to(root).as_posix()
+                    break
+                if saved:
                     with db.transaction(conn):
                         conn.execute(
                             "INSERT OR IGNORE INTO preview(file_id, path, is_primary) VALUES (?,?,1)",
-                            (row["id"], rel),
+                            (row["id"], saved),
                         )
                     stats["downloaded"] += 1
                 else:
@@ -456,6 +471,57 @@ def fetch_previews(conn, root: Path, handle: JobHandle | None = None,
         if handle:
             handle.advance(detail=row["filename"])
     return stats
+
+
+# Providers list a version's showcase media in one array, and on CivitAI the
+# first entry is very often an animation — 12 of this author's own models are
+# like that. Taking entry zero downloaded an mp4, and since CivitAI image URLs
+# carry no extension it was written out as .png: a file on disk, a blank card
+# in the gallery. These are the containers seen in the wild for those entries.
+_VIDEO_SUFFIXES = {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"}
+
+# Leading bytes of the formats a browser will actually paint. GIF counts: it
+# animates, but it is still an <img>.
+_IMAGE_MAGIC = (
+    b"\x89PNG\r\n\x1a\n",           # png
+    b"\xff\xd8\xff",                # jpeg
+    b"GIF87a", b"GIF89a",           # gif
+    b"BM",                          # bmp
+)
+
+
+def _image_candidates(info: Any) -> list[str]:
+    """Preview URLs worth trying, best first, videos removed.
+
+    Order is the provider's own, which puts the showcase image first — so the
+    "next image" is simply the next entry once the videos are dropped.
+    """
+    if not info or not info.preview_urls:
+        return []
+    meta = {str(m.get("url")): m for m in (info.preview_meta or [])
+            if isinstance(m, dict) and m.get("url")}
+    out: list[str] = []
+    for url in info.preview_urls:
+        url = str(url)
+        # CivitAI labels each entry; Arcenciel does not, hence the suffix check
+        # as well. Either signal is enough to skip it.
+        if str((meta.get(url) or {}).get("type") or "").lower() == "video":
+            continue
+        if Path(urllib.parse.urlparse(url).path).suffix.lower() in _VIDEO_SUFFIXES:
+            continue
+        out.append(url)
+    return out
+
+
+def _looks_like_image(path: Path) -> bool:
+    """Do the first bytes match a still-image format a browser can render?"""
+    try:
+        head = path.open("rb").read(16)
+    except OSError:
+        return False
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return True
+    return any(head.startswith(magic) for magic in _IMAGE_MAGIC)
 
 
 def _download(url: str, target: Path, provider: Any) -> bool:

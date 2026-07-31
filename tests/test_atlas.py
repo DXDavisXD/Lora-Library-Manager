@@ -1530,6 +1530,60 @@ class TestCollectionApi(LibraryFixture):
         self.assertEqual((row["rating"], row["notes"]), (5, "keep me"))
 
 
+class TestVideoPreviews(unittest.TestCase):
+    """A version's showcase media can lead with an animation.
+
+    CivitAI image URLs carry no extension, so downloading entry zero blindly
+    wrote an mp4 out as .png: a file on disk and a blank card in the gallery.
+    """
+
+    @staticmethod
+    def _info(urls, meta=None):
+        return ModelInfo(provider="civitai", preview_urls=urls,
+                         preview_meta=meta or [])
+
+    def test_skips_a_leading_video_and_takes_the_next(self):
+        got = enrich._image_candidates(self._info(
+            ["https://image.civitai.com/AAA/width=450",
+             "https://image.civitai.com/BBB/width=450"],
+            [{"url": "https://image.civitai.com/AAA/width=450", "type": "video"},
+             {"url": "https://image.civitai.com/BBB/width=450", "type": "image"}]))
+        self.assertEqual(got, ["https://image.civitai.com/BBB/width=450"])
+
+    def test_falls_back_to_the_extension_when_untyped(self):
+        # Arcenciel does not label entries, so the suffix is the only signal.
+        got = enrich._image_candidates(self._info(
+            ["https://ex.com/uploads/a.mp4", "https://ex.com/uploads/b.jpeg"]))
+        self.assertEqual(got, ["https://ex.com/uploads/b.jpeg"])
+
+    def test_all_video_yields_nothing_rather_than_a_broken_file(self):
+        got = enrich._image_candidates(self._info(
+            ["https://x/a.mp4"], [{"url": "https://x/a.mp4", "type": "video"}]))
+        self.assertEqual(got, [])
+
+    def test_ordinary_previews_keep_provider_order(self):
+        urls = ["https://x/1.png", "https://x/2.png"]
+        self.assertEqual(enrich._image_candidates(self._info(urls)), urls)
+
+    def test_sniffs_real_bytes_not_the_file_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            cases = {
+                "a.png": (b"\x89PNG\r\n\x1a\n" + b"\0" * 16, True),
+                "b.png": (b"\xff\xd8\xff\xe0" + b"\0" * 16, True),      # jpeg
+                "c.png": (b"RIFF\0\0\0\0WEBPVP8 " + b"\0" * 8, True),   # webp
+                # An mp4 and a webm wearing a .png name — the reported bug.
+                "d.png": (b"\0\0\0\x20ftypisom" + b"\0" * 12, False),
+                "e.png": (b"\x1a\x45\xdf\xa3" + b"\0" * 16, False),
+                "f.png": (b"", False),
+            }
+            for name, (data, expected) in cases.items():
+                path = tmp / name
+                path.write_bytes(data)
+                with self.subTest(name=name):
+                    self.assertIs(enrich._looks_like_image(path), expected)
+
+
 class TestDescriptionHtml(unittest.TestCase):
     """clean_html is the only thing between provider HTML and innerHTML."""
 
