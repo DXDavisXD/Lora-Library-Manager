@@ -383,3 +383,15 @@ resolution goes through its search endpoint and its own field names
 (`title`, `activationTags`, `uploader.username`) — the client was rewritten
 against real responses rather than assumed ones. Neither is covered by the test
 suite, which makes no network calls at all.
+
+## Licence and attribution
+
+MIT — see [LICENSE](LICENSE). Use it, change it, ship it, sell it. The one
+binding condition is that the copyright notice and the licence text travel
+with any copy or substantial portion of the code.
+
+Beyond that, a request rather than a requirement: **if you fork this, build on
+it, or share a modified version, please link back to
+https://github.com/DXDavisXD/Lora-Library-Manager and say what you changed.**
+No licence can compel a link, so this is asked in good faith — it costs you a
+line and it means people can find the original and the history behind it.
