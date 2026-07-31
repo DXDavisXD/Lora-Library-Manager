@@ -1407,6 +1407,8 @@ function applyJobState(payload) {
     // Leave the last message visible rather than snapping back to "Ready" —
     // the outcome of the job that just finished is the useful information.
     if (job && job.status !== 'running') {
+      // It has just retired into history, so the panel is now a job behind.
+      refreshHistory();
       const kind = job.status === 'error' ? 'err' : 'ok';
       setStatus(kind, `${job.label}: ${job.message || job.status}`);
       $('status-fill').style.width = job.status === 'done' ? '100%' : '0%';
@@ -1427,6 +1429,25 @@ function applyJobState(payload) {
   }
 
   if (state.view === 'manage') renderQueue(jobs);
+}
+
+/** Refresh "Recent" after a job finishes.
+ *
+ * The queue re-renders straight from the event payload, but history isn't in
+ * it — and shouldn't be. A hash pass emits progress frames five times a
+ * second, and hanging twenty retired job records off every one of those would
+ * put far more on the wire than the panel is worth. A job only joins history
+ * when it retires, so one fetch at that moment is all it takes. The server
+ * retires before it emits, so the finished job is already in the response.
+ */
+async function refreshHistory() {
+  if (state.view !== 'manage') return;
+  try {
+    const jobs = await apiGet('/api/jobs');
+    renderHistory(jobs.history || []);
+  } catch (err) {
+    /* The next job to finish will bring it up to date. */
+  }
 }
 
 function setStatus(kind, text) {

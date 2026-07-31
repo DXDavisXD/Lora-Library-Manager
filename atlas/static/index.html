@@ -157,13 +157,32 @@
   <section class="content" id="view-manage" hidden>
     <div class="manage-scroll">
       <div class="panel-grid">
+        <!-- Two independent stacks, not six panels in a shared grid. Operations
+             and Backup are very different heights, and as plain grid items the
+             shorter column's next panel could not start until the taller one
+             had finished — which left a band of empty page under Operations.
+             Stacking them means each column advances on its own. -->
+        <div class="panel-stack span-2">
         <!-- Operations, grouped by purpose -->
-        <article class="panel span-2">
+        <article class="panel">
           <h2>Operations</h2>
           <p class="muted small">One job runs at a time, cheapest stage first. Hover a button for what it does.</p>
           <div id="manage-actions"></div>
         </article>
 
+        <!-- Console sits under Operations, in the same wide stack, so it rises
+             to meet it instead of waiting on the height of the column beside. -->
+        <article class="panel">
+          <h2>Console</h2>
+          <div class="console" id="console" role="log" aria-live="polite"></div>
+          <div class="panel-footer">
+            <button type="button" class="btn tiny ghost" id="console-clear">Clear</button>
+            <label class="check inline"><input type="checkbox" id="console-follow" checked> Follow</label>
+          </div>
+        </article>
+        </div>
+
+        <div class="panel-stack">
         <!-- Backup & Restore -->
         <article class="panel">
           <h2>Backup &amp; Restore</h2>
@@ -201,19 +220,6 @@
           </div>
         </article>
 
-        <!-- Console. Ordered before the queue on purpose: both are two columns
-             wide, so this lands directly under Operations and leaves the queue
-             to sit under Backup, where the two short panels pair off instead of
-             each being stretched to a tall neighbour. -->
-        <article class="panel span-2">
-          <h2>Console</h2>
-          <div class="console" id="console" role="log" aria-live="polite"></div>
-          <div class="panel-footer">
-            <button type="button" class="btn tiny ghost" id="console-clear">Clear</button>
-            <label class="check inline"><input type="checkbox" id="console-follow" checked> Follow</label>
-          </div>
-        </article>
-
         <!-- Queue + history -->
         <article class="panel">
           <h2>Queue</h2>
@@ -221,6 +227,7 @@
           <h3>Recent</h3>
           <ol id="history-list" class="history-list"></ol>
         </article>
+        </div>
 
         <!-- Providers & keys -->
         <article class="panel">

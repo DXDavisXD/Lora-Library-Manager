@@ -662,7 +662,15 @@ body.sidebar-collapsed .sidebar {
   display: flex; flex-direction: column; gap: 10px; min-width: 0;
 }
 .panel.span-2 { grid-column: span 2; }
-@media (max-width: 900px) { .panel.span-2 { grid-column: span 1; } }
+/* A column of panels that advances on its own rather than waiting for the
+   tallest panel in a shared grid row. */
+.panel-stack {
+  display: flex; flex-direction: column; gap: var(--gap); min-width: 0;
+}
+.panel-stack.span-2 { grid-column: span 2; }
+@media (max-width: 900px) {
+  .panel.span-2, .panel-stack.span-2 { grid-column: span 1; }
+}
 .panel-footer { display: flex; gap: 10px; align-items: center; margin-top: auto; }
 
 /* Grouped operation cards with descriptions. */
