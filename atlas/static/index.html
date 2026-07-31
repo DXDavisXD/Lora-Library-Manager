@@ -201,15 +201,10 @@
           </div>
         </article>
 
-        <!-- Queue + history -->
-        <article class="panel">
-          <h2>Queue</h2>
-          <div id="queue-list" class="queue-list"><p class="muted">Idle.</p></div>
-          <h3>Recent</h3>
-          <ol id="history-list" class="history-list"></ol>
-        </article>
-
-        <!-- Console -->
+        <!-- Console. Ordered before the queue on purpose: both are two columns
+             wide, so this lands directly under Operations and leaves the queue
+             to sit under Backup, where the two short panels pair off instead of
+             each being stretched to a tall neighbour. -->
         <article class="panel span-2">
           <h2>Console</h2>
           <div class="console" id="console" role="log" aria-live="polite"></div>
@@ -217,6 +212,14 @@
             <button type="button" class="btn tiny ghost" id="console-clear">Clear</button>
             <label class="check inline"><input type="checkbox" id="console-follow" checked> Follow</label>
           </div>
+        </article>
+
+        <!-- Queue + history -->
+        <article class="panel">
+          <h2>Queue</h2>
+          <div id="queue-list" class="queue-list"><p class="muted">Idle.</p></div>
+          <h3>Recent</h3>
+          <ol id="history-list" class="history-list"></ol>
         </article>
 
         <!-- Providers & keys -->

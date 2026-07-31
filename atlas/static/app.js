@@ -2385,7 +2385,22 @@ function bindFilters() {
   };
 }
 
+/** Mark whether focus is currently being moved by keyboard.
+ *
+ * Only the checkbox focus ring reads this, and only because Chrome reports
+ * :focus-visible on a checkbox for an ordinary mouse click. Capture phase, so
+ * a handler calling stopPropagation cannot leave the flag stuck on.
+ */
+function trackKeyboardFocus() {
+  const root = document.documentElement;
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Tab') root.classList.add('kbd');
+  }, true);
+  addEventListener('pointerdown', () => root.classList.remove('kbd'), true);
+}
+
 function bindChrome() {
+  trackKeyboardFocus();
   $('nav-gallery').onclick = () => showView('gallery');
   $('nav-manage').onclick = () => showView('manage');
   $('theme-toggle').onclick = () =>

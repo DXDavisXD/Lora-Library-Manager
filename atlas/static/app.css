@@ -297,9 +297,12 @@ textarea { resize: vertical; min-height: 70px; font-family: inherit; }
 }
 .check input[type="checkbox"]:checked::after { transform: scale(1); }
 .check:hover input[type="checkbox"]:not(:checked) { border-color: var(--accent); }
-.check input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
-}
+/* Chrome matches :focus-visible on a checkbox for a plain mouse click, unlike
+   a button — so the global focus ring above sat around every box you ticked.
+   Suppressed for pointer input only: `kbd` is set while focus is being moved
+   with the keyboard, and the ring is exactly what a keyboard user navigates
+   by, so it must survive there. */
+:root:not(.kbd) input[type="checkbox"]:focus-visible { outline: none; }
 .check:has(input:checked) { color: var(--text); }
 
 /* ---------- topbar ---------- */
@@ -631,6 +634,11 @@ body.sidebar-collapsed .sidebar {
 .panel-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: var(--gap);
   align-content: start;
+  /* Each panel ends where its content ends. Grid's default stretches every
+     panel in a row to the tallest one, which put ~170px of empty panel under
+     Operations and ~210px under the queue — a bordered box of nothing, which
+     reads as something failing to load rather than as spacing. */
+  align-items: start;
   /* dense back-fills any hole a span-2 panel would otherwise leave */
   grid-auto-flow: dense;
 }
