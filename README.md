@@ -57,6 +57,12 @@ The grid is virtualised: cards are a fixed size, so row geometry is arithmetic
 and only the visible window plus a small overscan is ever rendered. Scrolling to
 the bottom of 1500 models keeps the DOM at the same size.
 
+Thumbnails load eagerly as soon as a card enters the window, and a thumbnail the
+page has already shown appears instantly when you scroll back to it — no fade,
+no blank card while the recycled element reloads. On a real 110-model library,
+scrolling back made no new downloads: every thumbnail came from the browser
+cache.
+
 ---
 
 ## Getting started
@@ -90,8 +96,10 @@ instead, so each version keeps its own rating and notes. The folder-level
 folder it is left alone rather than being overwritten with one version's data.
 
 Nothing is required beyond the standard library. Pillow is optional — without it
-Atlas serves full-size previews instead of thumbnails, which still works but is
-much heavier.
+Atlas cannot make new thumbnails and serves full-size previews instead, which
+still works but is much heavier. Thumbnails already in the cache are still
+served, and the gallery shows a warning with the install command so a missing
+Pillow is never silent.
 
 ## The gallery
 
@@ -243,6 +251,14 @@ one unit. Nothing is ever overwritten (collisions get a numeric suffix),
 folders emptied by the move are removed, and versions of the same model land in
 the same folder. `dry_run` mode short-circuits the apply.
 
+`cleanup` only flags what is clearly a leftover: sidecars named after a model
+that no longer exists, and folders holding nothing but such husks. Your own
+files beside a model — reference images, notes, a different model's assets — are
+never touched. Deleting a model from the gallery follows the same rule: it
+removes that model's files and generic assets (`preview.png`, `metadata.json`
+and so on), keeps anything else in the folder, and removes the folder only if
+it ends up empty.
+
 Measured on a real 24-model library: 24 models moved, 96 files, 0 content
 hashes lost, 0 empty folders left, 6 stranded sidecars detected and removed.
 
@@ -304,10 +320,13 @@ provider lookup, a duplicate sweep, or a backup. Results are cached and
 invalidated by the scanner. Smallest files hash first, so a cancel still banks
 progress.
 
-**User data is keyed by content hash, not path.** Ratings, notes, collections
-and personal triggers live in their own table and are archived by SHA-256 when a
-file disappears, so renaming or reorganising your library cannot cost you them.
-There is a test for exactly this.
+**User data follows the file, not the path.** Ratings, notes, collections
+and personal triggers live in their own table. When a scan sees one file vanish
+and another appear with the same size and modification time — what a rename or
+same-drive move in Explorer looks like — the data moves to the new path. A move
+that changes the mtime (another drive) is matched by SHA-256 once the file is
+hashed. An ambiguous match is left alone rather than guessed. There are
+end-to-end tests for each case.
 
 **Sidecar writes are merge-preserving.** Unknown keys written by another tool
 are read back and re-emitted untouched, and the lenient parser repairs trailing
@@ -352,7 +371,7 @@ atlas/
   server.py             HTTP, auth, static and media serving
   providers/            base contract, registry, CivitAI, Arcenciel
   static/               index.html, app.css, app.js
-tests/test_atlas.py     122 tests
+tests/test_atlas.py     159 tests
 docs/                   README screenshots
 ```
 
@@ -362,7 +381,7 @@ docs/                   README screenshots
 python -m unittest discover -s tests -v
 ```
 
-122 tests, no network access, each against a throwaway library.
+159 tests, no network access, each against a throwaway library.
 
 ---
 

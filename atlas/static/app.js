@@ -277,6 +277,18 @@ function positionOf(index) {
   return { top: row * (CARD_H + GAP), left: (state.offsetX || 0) + col * (CARD_W + GAP) };
 }
 
+/* Thumbnail URLs that have finished loading at least once. Only strings, and
+ * capped, so a long session over a huge library cannot grow it without bound;
+ * Set iteration order is insertion order, which makes eviction FIFO. */
+const seenThumbs = new Set();
+const SEEN_THUMBS_MAX = 5000;
+
+function rememberThumb(src) {
+  if (seenThumbs.has(src)) return;
+  seenThumbs.add(src);
+  if (seenThumbs.size > SEEN_THUMBS_MAX) seenThumbs.delete(seenThumbs.values().next().value);
+}
+
 function buildCard(item, index) {
   const { top, left } = positionOf(index);
   const card = el('article', 'card');
@@ -288,11 +300,21 @@ function buildCard(item, index) {
   const thumb = el('div', 'card-thumb');
   if (item.preview) {
     const img = el('img');
+    const src = `/media/${item.preview.split('/').map(encodeURIComponent).join('/')}`;
     img.alt = '';
-    img.loading = 'lazy';
+    // No loading="lazy": the grid only builds the visible rows plus overscan,
+    // and the overscan exists precisely so those images start early. Lazy
+    // loading deferred them until they were nearly on screen — the late ones.
     img.decoding = 'async';
-    img.src = `/media/${item.preview.split('/').map(encodeURIComponent).join('/')}`;
-    img.addEventListener('load', () => img.classList.add('loaded'), { once: true });
+    // A card scrolled back into view is a rebuilt element, but its image is
+    // already in the browser cache. Show it at once instead of fading in from
+    // blank again, which is what made every revisit look like a reload.
+    if (seenThumbs.has(src)) img.classList.add('loaded', 'instant');
+    img.src = src;
+    img.addEventListener('load', () => {
+      img.classList.add('loaded');
+      rememberThumb(src);
+    }, { once: true });
     img.addEventListener('error', () => {
       img.remove();
       thumb.append(el('div', 'placeholder', 'unreadable'));
@@ -2524,6 +2546,12 @@ async function init() {
   try {
     const boot = await apiGet('/api/bootstrap');
     state.bootstrap = boot;
+    if (boot.thumbnails === false) {
+      // Easy to miss in the console, and it is the difference between ~20 KB
+      // per card and several MB, so say it where the slowness is visible.
+      toast('Thumbnails are off because Pillow is not installed, so full-size '
+        + 'previews are loading. Run: pip install -r requirements.txt', 'warn', true);
+    }
     state.pageSize = boot.settings.page_size || 120;
     state.filters.sort = boot.settings.default_sort || 'name';
 

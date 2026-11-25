@@ -270,6 +270,17 @@ def plan_version_grouping(conn, root: Path) -> Plan:
     return plan
 
 
+_SIDECAR_ENDINGS = (".civitai.info", ".user.json", ".json", ".info")
+
+
+def _sidecar_root(name_lower: str) -> str | None:
+    """The model stem a sidecar file name describes, or None if not a sidecar."""
+    for ending in _SIDECAR_ENDINGS:
+        if name_lower.endswith(ending) and len(name_lower) > len(ending):
+            return name_lower[: -len(ending)]
+    return None
+
+
 def find_orphans(conn, root: Path) -> list[str]:
     """Sidecars and previews with no surviving model file.
 
@@ -302,12 +313,30 @@ def find_orphans(conn, root: Path) -> list[str]:
 
         has_models = rel_dir in stems_by_dir
         if has_models:
-            # Normal case: assets in a model folder that belong to no model here.
+            # Normal case: the sidecar set of a model that is no longer here
+            # (``oldname.json`` beside ``newname.safetensors``). Only metadata
+            # proves a file belonged to a model, so an orphan set is anchored
+            # on an unclaimed .json/.info; images and text files are flagged
+            # only when they share that sidecar's stem. A README or showcase
+            # image the user keeps beside their model is never caught.
+            stems = stems_by_dir[rel_dir]
+            roots = set()
             for name in filenames:
                 rel = f"{rel_dir}/{name}" if rel_dir else name
-                if rel in known or name.lower() in PER_FOLDER:
+                low = name.lower()
+                if rel in known or low in PER_FOLDER:
                     continue
-                if Path(name).suffix.lower() in ASSET_SUFFIXES:
+                root_name = _sidecar_root(low)
+                if root_name and root_name not in stems:
+                    roots.add(root_name)
+            for name in filenames:
+                rel = f"{rel_dir}/{name}" if rel_dir else name
+                low = name.lower()
+                if rel in known or low in PER_FOLDER:
+                    continue
+                if Path(low).suffix not in ASSET_SUFFIXES:
+                    continue
+                if any(low.startswith(r + ".") for r in roots):
                     orphans.append(rel)
             continue
 
@@ -321,6 +350,8 @@ def find_orphans(conn, root: Path) -> list[str]:
             continue                     # something unrecognised: leave it alone
         if any(Path(n).suffix.lower() in config.MODEL_EXTENSIONS for n in filenames):
             continue
+        if not any(Path(n).suffix.lower() in (".json", ".info") for n in filenames):
+            continue                     # just images/text: someone's references
         for name in filenames:
             rel = f"{rel_dir}/{name}" if rel_dir else name
             if rel not in known:

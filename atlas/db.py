@@ -237,7 +237,35 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if column not in have:
             conn.execute(f"ALTER TABLE model ADD COLUMN {column} {decl}")
 
+    _dedupe_collections(conn)
+
     # Future migrations dispatch on int(row["value"]) here.
+
+
+def _dedupe_collections(conn: sqlite3.Connection) -> None:
+    """Make collection names unique, merging any duplicates already stored.
+
+    The table's UNIQUE(name, parent_id) never fired: parent_id is always NULL,
+    and SQLite treats NULLs as distinct, so every ``INSERT OR IGNORE`` (create,
+    backup restore) inserted another copy. Duplicates are folded into the
+    oldest row, keeping every membership, before the real constraint goes on.
+    """
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='index' "
+                    "AND name='ux_collection_name'").fetchone():
+        return
+    with transaction(conn):
+        dups = conn.execute(
+            "SELECT name, MIN(id) AS keep FROM collection "
+            "GROUP BY name HAVING COUNT(*) > 1").fetchall()
+        for dup in dups:
+            conn.execute(
+                "INSERT OR IGNORE INTO collection_member(collection_id, file_id) "
+                "SELECT ?, file_id FROM collection_member WHERE collection_id IN "
+                "(SELECT id FROM collection WHERE name=? AND id!=?)",
+                (dup["keep"], dup["name"], dup["keep"]))
+            conn.execute("DELETE FROM collection WHERE name=? AND id!=?",
+                         (dup["name"], dup["keep"]))
+        conn.execute("CREATE UNIQUE INDEX ux_collection_name ON collection(name)")
 
 
 # --------------------------------------------------------------------------
