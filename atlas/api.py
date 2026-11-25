@@ -97,6 +97,12 @@ def bootstrap(req: Request) -> dict[str, Any]:
 
 
 def list_models(req: Request) -> dict[str, Any]:
+    # Numeric filters (min_rating, collection) are parsed inside the query
+    # builder; a non-number there is the caller's mistake, not a server fault.
+    for name in ("min_rating", "collection"):
+        value = req.query.get(name)
+        if value not in (None, "") and not str(value).strip().lstrip("-").isdigit():
+            raise ApiError(400, f"{name} must be an integer")
     return query.list_models(req.conn, req.query)
 
 
@@ -293,6 +299,10 @@ def update_membership(req: Request) -> dict[str, Any]:
     file_ids = req.param("file_ids") or []
     if not isinstance(file_ids, list):
         raise ApiError(400, "file_ids must be a list")
+    try:
+        file_ids = [int(fid) for fid in file_ids]
+    except (TypeError, ValueError):
+        raise ApiError(400, "file_ids must be integers") from None
     add = req.bool_param("add", True)
     conn = req.conn
     with db.transaction(conn):
@@ -665,6 +675,10 @@ def rename_category(req: Request) -> dict[str, Any]:
             "models_affected": len(residents), "models_moved": moved}
 
 
+_GENERIC_ASSET_NAMES = {"preview", "metadata", "cover", "thumbnail", "sample", "user_data"}
+_ASSET_SUFFIXES = {".json", ".info", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt"}
+
+
 def delete_model(req: Request) -> dict[str, Any]:
     """Delete one model version and everything belonging to it.
 
@@ -724,12 +738,25 @@ def delete_model(req: Request) -> dict[str, Any]:
             failed.append(f"{path.name}: {exc}")
     folder_removed = False
     if folder.is_dir() and not siblings and folder != root:
+        # Sweep up this model's own leftovers the index did not know about —
+        # stem-named files and the generic per-model names a folder-per-model
+        # layout uses. Anything else is the user's (notes, prompt files, their
+        # own images) and stays; the folder only goes if that leaves it empty.
+        stem_l = stem.lower()
         for leftover in list(folder.iterdir()):
+            if not leftover.is_file():
+                continue
+            low = leftover.name.lower()
+            ours = (low.startswith(stem_l + ".")
+                    or low.split(".", 1)[0] in _GENERIC_ASSET_NAMES)
+            if not ours or leftover.suffix.lower() not in _ASSET_SUFFIXES:
+                kept.append(leftover.name)
+                continue
             try:
                 leftover.unlink()
                 removed.append(leftover.name)
-            except OSError:
-                pass
+            except OSError as exc:
+                failed.append(f"{leftover.name}: {exc}")
         try:
             folder.rmdir()
             folder_removed = True

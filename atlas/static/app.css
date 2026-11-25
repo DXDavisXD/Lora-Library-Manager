@@ -485,6 +485,8 @@ body.sidebar-collapsed .sidebar {
   opacity: 0; transition: opacity .22s ease;
 }
 .card-thumb img.loaded { opacity: 1; }
+/* Already seen this session: appear with the card, no second fade-in. */
+.card-thumb img.instant { transition: none; }
 .card-thumb .placeholder {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1118,6 +1120,7 @@ body.modal-open { overflow: hidden; }
 }
 .toast.error { border-left-color: var(--err); }
 .toast.ok    { border-left-color: var(--ok); }
+.toast.warn  { border-left-color: var(--warn, var(--err)); }
 .toast .grow { flex: 1 1 auto; }
 .toast button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0; }
 

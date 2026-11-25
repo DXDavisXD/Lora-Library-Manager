@@ -120,6 +120,8 @@ def hash_pending(
 def _commit(conn, results: list[tuple[int, str | None]]) -> None:
     if not results:
         return
+    from .scanner import reattach_moved
+
     with db.transaction(conn):
         for fid, digest in results:
             if digest:
@@ -127,6 +129,9 @@ def _commit(conn, results: list[tuple[int, str | None]]) -> None:
                     "UPDATE model_file SET sha256=?, hash_state='done' WHERE id=?",
                     (digest, fid),
                 )
+                # Now that the content is known, a file moved across drives
+                # (new mtime) can still be matched to the data it left behind.
+                reattach_moved(conn, fid)
             else:
                 conn.execute(
                     "UPDATE model_file SET hash_state='error' WHERE id=?", (fid,)

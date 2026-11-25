@@ -2028,5 +2028,230 @@ class TestServerSafety(unittest.TestCase):
             self.assertNotIn("get_secret", source)
 
 
+# ---------------------------------------------------------------------------
+# Regressions found in review: each of these failed before its fix.
+# ---------------------------------------------------------------------------
+
+class TestReviewRegressions(LibraryFixture):
+
+    def _req(self, method, segments, body=None, query_params=None):
+        from atlas import api
+        return api.Request(method, "/" + "/".join(segments),
+                           query_params or {}, body or {}, segments)
+
+    def _rate(self, file_id, **fields):
+        from atlas import api
+        api.update_user_data(self._req(
+            "POST", ["api", "models", str(file_id), "user"], fields))
+
+    def _id(self, rel):
+        return self.conn.execute(
+            "SELECT id FROM model_file WHERE path=?", (rel,)).fetchone()["id"]
+
+    def _user(self, rel):
+        return self.conn.execute(
+            "SELECT u.rating, u.notes FROM model_file f "
+            "LEFT JOIN user_data u ON u.file_id=f.id WHERE f.path=?", (rel,)).fetchone()
+
+    # -- rename outside Atlas ---------------------------------------------
+
+    def test_rename_in_a_shared_folder_keeps_user_data(self):
+        """End to end, no hand-inserted orphan rows: rate, rename, rescan.
+
+        A folder holding several versions has no shared user_data.json to fall
+        back on, so before the fix the rating was simply gone.
+        """
+        self.make_model("Chars/rin_v1.safetensors", b"version one")
+        self.make_model("Chars/rin_v2.safetensors", b"version two")
+        self.rescan()
+        self._rate(self._id("Chars/rin_v1.safetensors"), rating=5, notes="my notes")
+
+        (self.root / "Chars/rin_v1.safetensors").rename(
+            self.root / "Chars/rin_old.safetensors")
+        self.rescan()
+
+        row = self._user("Chars/rin_old.safetensors")
+        self.assertEqual((row["rating"], row["notes"]), (5, "my notes"))
+        # Moved, not copied: the stale row no longer holds it.
+        self.assertIsNone(self._user("Chars/rin_v1.safetensors")["rating"])
+
+    def test_rename_carries_collection_membership(self):
+        from atlas import api
+        self.make_model("a/one.safetensors", b"one")
+        self.make_model("a/two.safetensors", b"two!")
+        self.rescan()
+        fid = self._id("a/one.safetensors")
+        self._rate(fid, rating=3)
+        cid = api.create_collection(self._req("POST", ["api", "collections"],
+                                              {"name": "Keep"}))["id"]
+        api.update_membership(self._req("POST", ["api", "collections", str(cid), "members"],
+                                        {"file_ids": [fid]}))
+        (self.root / "a/one.safetensors").rename(self.root / "a/uno.safetensors")
+        self.rescan()
+        members = [r["path"] for r in self.conn.execute(
+            "SELECT f.path FROM collection_member cm JOIN model_file f ON f.id=cm.file_id "
+            "WHERE cm.collection_id=?", (cid,))]
+        self.assertEqual(members, ["a/uno.safetensors"])
+
+    def test_move_across_drives_is_matched_by_hash(self):
+        """A cross-drive move changes mtime; the hash pass still reunites it."""
+        path = self.make_model("a/one.safetensors", b"same bytes")
+        self.make_model("a/two.safetensors", b"other!!!!!")
+        self.rescan()
+        hashing.hash_pending(self.conn, self.root)
+        self._rate(self._id("a/one.safetensors"), rating=4)
+
+        data = path.read_bytes()
+        path.unlink()
+        moved = self.root / "b/one.safetensors"
+        moved.parent.mkdir()
+        moved.write_bytes(data)
+        os.utime(moved, (1_000_000, 1_000_000))
+        self.rescan()
+        self.assertIsNone(self._user("b/one.safetensors")["rating"])
+        hashing.hash_pending(self.conn, self.root)
+        self.assertEqual(self._user("b/one.safetensors")["rating"], 4)
+
+    def test_ambiguous_size_and_mtime_match_is_not_guessed(self):
+        a = self.make_model("x/a.safetensors", b"same")
+        b = self.make_model("x/b.safetensors", b"same")
+        os.utime(a, (2_000_000, 2_000_000))
+        os.utime(b, (2_000_000, 2_000_000))
+        self.make_model("x/c.safetensors", b"anchor")
+        self.rescan()
+        self._rate(self._id("x/a.safetensors"), rating=5)
+        self._rate(self._id("x/b.safetensors"), rating=1)
+        a.rename(self.root / "x/a2.safetensors")
+        b.rename(self.root / "x/b2.safetensors")
+        self.rescan()
+        self.assertIsNone(self._user("x/a2.safetensors")["rating"])
+        self.assertIsNone(self._user("x/b2.safetensors")["rating"])
+
+    # -- delete model ------------------------------------------------------
+
+    def test_delete_model_keeps_unrelated_files_in_its_folder(self):
+        from atlas import api
+        self.make_model("Chars/rin.safetensors", preview=True)
+        (self.root / "Chars/my_prompts.txt").write_text("hand written")
+        (self.root / "Chars/rin.civitai.info").write_text("{}")
+        self.rescan()
+        out = api.delete_model(self._req(
+            "DELETE", ["api", "models", str(self._id("Chars/rin.safetensors"))]))
+        self.assertTrue((self.root / "Chars/my_prompts.txt").exists())
+        self.assertFalse((self.root / "Chars/rin.png").exists())
+        self.assertFalse((self.root / "Chars/rin.civitai.info").exists())
+        self.assertIn("my_prompts.txt", out["kept"])
+        self.assertFalse(out["folder_removed"])
+
+    def test_delete_model_still_removes_an_emptied_folder(self):
+        from atlas import api
+        self.make_model("Chars/rin.safetensors", preview=True)
+        (self.root / "Chars/preview.png").write_bytes(b"img")
+        self.rescan()
+        out = api.delete_model(self._req(
+            "DELETE", ["api", "models", str(self._id("Chars/rin.safetensors"))]))
+        self.assertTrue(out["folder_removed"])
+        self.assertFalse((self.root / "Chars").exists())
+
+    # -- cleanup -----------------------------------------------------------
+
+    def test_cleanup_leaves_user_files_beside_models(self):
+        from atlas import organizer
+        self.make_model("Chars/rin.safetensors", preview=True)
+        (self.root / "Chars/README.txt").write_text("mine")
+        (self.root / "Chars/showcase_01.png").write_bytes(b"img")
+        self.rescan()
+        self.assertEqual(organizer.find_orphans(self.conn, self.root), [])
+
+    def test_cleanup_still_finds_a_renamed_models_sidecars(self):
+        from atlas import organizer
+        self.make_model("Chars/rin.safetensors", preview=True)
+        for name in ("oldname.json", "oldname.civitai.info", "oldname.preview.png"):
+            (self.root / "Chars" / name).write_bytes(b"{}")
+        self.rescan()
+        self.assertEqual(organizer.find_orphans(self.conn, self.root), [
+            "Chars/oldname.civitai.info", "Chars/oldname.json", "Chars/oldname.preview.png"])
+
+    def test_cleanup_leaves_a_folder_of_reference_images(self):
+        from atlas import organizer
+        self.make_model("a/one.safetensors")
+        refs = self.root / "Refs"
+        refs.mkdir()
+        (refs / "pose1.png").write_bytes(b"img")
+        (refs / "pose2.jpg").write_bytes(b"img")
+        self.rescan()
+        self.assertEqual(organizer.find_orphans(self.conn, self.root), [])
+
+    # -- collections ---------------------------------------------------------
+
+    def test_creating_a_collection_twice_keeps_one(self):
+        from atlas import api
+        first = api.create_collection(self._req("POST", ["api", "collections"], {"name": "Anime"}))
+        second = api.create_collection(self._req("POST", ["api", "collections"], {"name": "Anime"}))
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM collection WHERE name='Anime'").fetchone()[0], 1)
+
+    def test_existing_duplicate_collections_are_merged_on_open(self):
+        self.make_model("a/one.safetensors")
+        self.make_model("a/two.safetensors", b"two")
+        self.rescan()
+        ids = [r["id"] for r in self.conn.execute("SELECT id FROM model_file ORDER BY path")]
+        with db.transaction(self.conn):
+            self.conn.execute("DROP INDEX ux_collection_name")
+            for fid in ids:
+                cur = self.conn.execute(
+                    "INSERT INTO collection(name, created_at) VALUES ('Dup', ?)", (db.now(),))
+                self.conn.execute(
+                    "INSERT INTO collection_member(collection_id, file_id) VALUES (?,?)",
+                    (cur.lastrowid, fid))
+        db.close_thread_connections()
+        db._initialised.clear()
+        self.conn = db.connect()
+        rows = self.conn.execute(
+            "SELECT c.id, COUNT(cm.file_id) n FROM collection c "
+            "LEFT JOIN collection_member cm ON cm.collection_id=c.id "
+            "WHERE c.name='Dup' GROUP BY c.id").fetchall()
+        self.assertEqual([r["n"] for r in rows], [2])
+
+    # -- thumbnails ----------------------------------------------------------
+
+    def test_cached_thumbnail_is_served_without_pillow(self):
+        """A Python without Pillow must still use thumbnails already on disk."""
+        from atlas import thumbnails
+        source = self.root / "a/one.png"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64)
+        cached = thumbnails.thumb_path(source, 320)
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(b"RIFF....WEBP")
+        saved = thumbnails.HAVE_PILLOW
+        thumbnails.HAVE_PILLOW = False
+        try:
+            self.assertEqual(thumbnails.get_or_create(source, 320), cached)
+            self.assertIsNone(thumbnails.get_or_create(source, 640),
+                              "nothing cached at this size and no Pillow to make it")
+        finally:
+            thumbnails.HAVE_PILLOW = saved
+
+    # -- bad parameters ----------------------------------------------------
+
+    def test_non_numeric_filters_are_a_400(self):
+        from atlas import api
+        for params in ({"min_rating": "abc"}, {"collection": "x"}):
+            with self.assertRaises(api.ApiError) as ctx:
+                api.list_models(self._req("GET", ["api", "models"], query_params=params))
+            self.assertEqual(ctx.exception.status, 400)
+        api.list_models(self._req("GET", ["api", "models"], query_params={"min_rating": "3"}))
+
+    def test_non_numeric_member_ids_are_a_400(self):
+        from atlas import api
+        cid = api.create_collection(self._req("POST", ["api", "collections"], {"name": "C"}))["id"]
+        with self.assertRaises(api.ApiError) as ctx:
+            api.update_membership(self._req(
+                "POST", ["api", "collections", str(cid), "members"], {"file_ids": ["x"]}))
+        self.assertEqual(ctx.exception.status, 400)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

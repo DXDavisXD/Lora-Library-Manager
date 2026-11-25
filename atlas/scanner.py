@@ -190,6 +190,7 @@ def sync(conn, root: Path, progress: Progress | None = None) -> ScanResult:
     ts = db.now()
 
     batch: list[FoundFile] = []
+    added_ids: list[int] = []
     total_hint = len(existing) or 1
 
     def flush(items: list[FoundFile]) -> None:
@@ -212,7 +213,7 @@ def sync(conn, root: Path, progress: Progress | None = None) -> ScanResult:
                     )
                     fid = int(cur.lastrowid)
                     result.added += 1
-                    _reattach_user_data(conn, fid)
+                    added_ids.append(fid)
                 else:
                     fid, old_size, old_mtime = prev
                     if old_size != f.size or abs(old_mtime - f.mtime) > 1e-6:
@@ -259,6 +260,15 @@ def sync(conn, root: Path, progress: Progress | None = None) -> ScanResult:
                 )
         result.missing = len(gone)
 
+    # A file that vanished and a file that appeared in the same scan is usually
+    # one file renamed or moved outside Atlas. Carry its user data across now,
+    # while (size, mtime) still identify it — a rename keeps both, and waiting
+    # for a hash would mean waiting for a pass that may never hash this file.
+    if result.added and gone:
+        with db.transaction(conn):
+            for fid in added_ids:
+                reattach_moved(conn, fid)
+
     with db.transaction(conn):
         db.meta_set(conn, "last_scan", str(ts))
     result.duration = time.time() - started
@@ -284,12 +294,71 @@ def _sync_previews(conn, file_id: int, found: FoundFile) -> int:
     return len(wanted)
 
 
-def _reattach_user_data(conn, file_id: int) -> None:
-    """Restore orphaned user data if this file's hash matches a previous one.
+_USER_COLUMNS = ("rating, favorite, notes, personal_triggers, tags, weight, "
+                 "negative_prompt, use_count, last_used")
 
-    Only possible once the file has been hashed, so this is a no-op on first
-    sight and gets retried by the hashing pass. Renaming a LoRA should never
-    cost the user their rating and notes.
+
+def reattach_moved(conn, file_id: int) -> bool:
+    """Give a newly seen file the user data of the missing file it replaced.
+
+    Run inside a transaction. A missing row is the same file when its content
+    hash matches, or — before either side is hashed — when size and mtime
+    both match exactly, which is what a rename or same-drive move preserves.
+    An ambiguous (size, mtime) match is skipped rather than guessed at.
+    Returns whether anything was carried across.
+    """
+    new = conn.execute(
+        "SELECT size, mtime, sha256 FROM model_file WHERE id=?", (file_id,)).fetchone()
+    if new is None:
+        return False
+    if conn.execute("SELECT 1 FROM user_data WHERE file_id=?", (file_id,)).fetchone():
+        return False                  # never overwrite data the new row already has
+
+    candidates = []
+    if new["sha256"]:
+        candidates = conn.execute(
+            "SELECT f.id FROM model_file f JOIN user_data u ON u.file_id=f.id "
+            "WHERE f.present=0 AND f.sha256=? AND f.id!=?",
+            (new["sha256"], file_id)).fetchall()
+    if not candidates:
+        rows = conn.execute(
+            "SELECT f.id, f.mtime, f.sha256 FROM model_file f "
+            "JOIN user_data u ON u.file_id=f.id "
+            "WHERE f.present=0 AND f.size=? AND f.id!=?",
+            (new["size"], file_id)).fetchall()
+        candidates = [
+            r for r in rows
+            if abs(r["mtime"] - new["mtime"]) < 1e-6
+            and not (r["sha256"] and new["sha256"] and r["sha256"] != new["sha256"])
+        ]
+    if len(candidates) != 1:
+        if not new["sha256"]:
+            return False
+        _reattach_user_data(conn, file_id)          # archived by a backup restore
+        return False
+
+    old_id = candidates[0]["id"]
+    conn.execute(
+        f"INSERT INTO user_data(file_id, {_USER_COLUMNS}, updated_at) "
+        f"SELECT ?, {_USER_COLUMNS}, ? FROM user_data WHERE file_id=?",
+        (file_id, db.now(), old_id))
+    conn.execute(
+        "INSERT OR IGNORE INTO collection_member(collection_id, file_id) "
+        "SELECT collection_id, ? FROM collection_member WHERE file_id=?",
+        (file_id, old_id))
+    # Detach from the old row so the data cannot be claimed a second time.
+    conn.execute("DELETE FROM user_data WHERE file_id=?", (old_id,))
+    conn.execute("DELETE FROM collection_member WHERE file_id=?", (old_id,))
+    db.fts_replace(conn, file_id)
+    return True
+
+
+def _reattach_user_data(conn, file_id: int) -> None:
+    """Restore user data archived by content hash (a backup restore parks
+    entries here when their file is not present yet).
+
+    Only possible once the file has been hashed; the hashing pass calls
+    :func:`reattach_moved`, which falls through to this.
     """
     row = conn.execute("SELECT sha256 FROM model_file WHERE id=?", (file_id,)).fetchone()
     if not row or not row["sha256"]:

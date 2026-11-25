@@ -57,12 +57,17 @@ def get_or_create(source: Path, size: int | None = None) -> Path | None:
     Returns None when Pillow is unavailable or the source cannot be decoded;
     the caller then serves the original.
     """
-    if not HAVE_PILLOW or not source.is_file():
+    if not source.is_file():
         return None
     size = int(size or config.get("thumbnail_size") or 320)
     target = thumb_path(source, size)
+    # A cached thumbnail needs no Pillow to serve. Checking the cache first
+    # means a Python without it (a fresh venv, a reinstall) still gets the
+    # small files already on disk instead of falling back to multi-MB originals.
     if target.exists():
         return target
+    if not HAVE_PILLOW:
+        return None
 
     key = target.stem
     with _locks_guard:
